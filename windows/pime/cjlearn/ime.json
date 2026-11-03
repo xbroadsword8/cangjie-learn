@@ -1,0 +1,11 @@
+{
+    "name": "倉頡學習版 (PIME)",
+    "version": "0.1",
+    "guid": "{42D1BA3B-DC86-44CE-AA0B-29BE3392897F}",
+    "locale": "zh-Hant-TW",
+    "fallbackLocale": "zh-TW",
+    "icon": "icon.ico",
+    "win8_icon": "",
+    "moduleName": "cjlearn_ime",
+    "serviceName": "CangjieLearnTextService"
+}

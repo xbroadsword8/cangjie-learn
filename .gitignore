@@ -1,0 +1,10 @@
+__pycache__/
+.pytest_cache/
+# 產生的檔案
+data/model.db
+windows/build/
+windows/dist/
+mac/build/
+mac/tests/cases.json
+# 官方安裝檔：package.sh 會下載並驗 sha256
+windows/vendor/
