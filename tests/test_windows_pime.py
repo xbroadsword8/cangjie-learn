@@ -189,3 +189,19 @@ def test_clear_on_error_menu(svc, tmp_path):
     assert svc.comp.code == "qqqq" and kb.out == ""             # 關掉後停在那裡
     menu = svc.handleRequest({"method": "onMenu", "id": "windows-mode-icon"})
     assert menu["return"][0]["checked"] is False
+
+
+def test_peers_and_sync_status(svc, tmp_path):
+    import json
+    from input_methods.cjlearn import cjlearn_ime
+    data = tmp_path / "appdata" / "PIME" / "cjlearn"
+    (data / "sync").mkdir(parents=True)
+    (data / "settings.json").write_text(json.dumps({"sync_remote": "x", "sync_name": "me"}))
+    picked = svc.comp.model.candidates("a")[1].ch
+    (data / "sync" / "other.json").write_text(json.dumps({"uni": {picked: 50}, "bi": {}}, ensure_ascii=False))
+    (data / "sync" / "me.json").write_text(json.dumps({"uni": {"日": 9999}, "bi": {}}, ensure_ascii=False))
+    cjlearn_ime.PEERS._next = 0
+    svc.handleRequest({"method": "onActivate", "isKeyboardOpen": True})
+    assert svc.comp.model.candidates("a")[0].ch == picked      # 別台學的算進來，自己的檔不重複算
+    menu = svc.handleRequest({"method": "onMenu", "id": "windows-mode-icon"})["return"]
+    assert menu[1]["text"] == "同步：還沒執行過" and menu[1]["enabled"] is False

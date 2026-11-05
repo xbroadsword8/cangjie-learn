@@ -10,7 +10,7 @@ gi.require_version("IBus", "1.0")
 from gi.repository import GLib, IBus  # noqa: E402
 
 from .composer import RADICALS, Composer  # noqa: E402
-from . import settings  # noqa: E402
+from . import settings, sync  # noqa: E402
 from .model import USER_DB, Model  # noqa: E402
 
 LOG = logging.getLogger("cangjie-learn")
@@ -28,6 +28,7 @@ DEBUG_FLAG = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "c
 
 SETTINGS_FILE = USER_DB.parent / "settings.json"
 SETTINGS = settings.load(SETTINGS_FILE)   # 所有輸入框共用
+PEERS = sync.PeerWatcher(USER_DB.parent)  # 其他電腦的學習資料（sync.py 同步到 sync/）
 _model = None
 
 
@@ -62,9 +63,14 @@ class CangjieLearnEngine(IBus.Engine):
             tooltip=IBus.Text.new_from_string("沒有候選字時按空白或數字鍵，清掉字碼"),
             sensitive=True, visible=True, state=IBus.PropState.UNCHECKED,
         )
+        self.sync_prop = IBus.Property(   # 同步狀態（只顯示，沒設定同步就隱藏）
+            key="SyncStatus", prop_type=IBus.PropType.NORMAL, label=IBus.Text.new_from_string(""),
+            sensitive=False, visible=False, state=IBus.PropState.UNCHECKED,
+        )
         self.props_list = IBus.PropList()
         self.props_list.append(self.mode_prop)
         self.props_list.append(self.clear_prop)
+        self.props_list.append(self.sync_prop)
         self._apply_settings()
 
     # --- 按鍵 ---
@@ -177,12 +183,15 @@ class CangjieLearnEngine(IBus.Engine):
         on = SETTINGS["clear_on_error"]
         self.comp.clear_on_error = on
         self.clear_prop.set_state(IBus.PropState.CHECKED if on else IBus.PropState.UNCHECKED)
+        text = sync.status_text(USER_DB.parent)
+        self.sync_prop.set_label(IBus.Text.new_from_string(text))
+        self.sync_prop.set_visible(bool(text))
 
     def do_property_activate(self, prop_name, state):
         if prop_name == "ClearOnError":
             SETTINGS["clear_on_error"] = state == IBus.PropState.CHECKED
             try:
-                settings.save(SETTINGS_FILE, SETTINGS)
+                settings.update(SETTINGS_FILE, clear_on_error=SETTINGS["clear_on_error"])
             except OSError:
                 LOG.exception("儲存設定失敗")
             self._apply_settings()
@@ -207,6 +216,7 @@ class CangjieLearnEngine(IBus.Engine):
 
     def do_focus_in(self):
         self._ctrl_down = False
+        PEERS.poll(shared_model())
         self._apply_settings()
         self.register_properties(self.props_list)
         self._update_mode()

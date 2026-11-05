@@ -40,6 +40,8 @@ final class Model {
     private var uni: [[UInt8]: Int] = [:]
     private var userUni: [[UInt8]: Int] = [:]
     private var userBi: [[UInt8]: Int] = [:]
+    private var peerUni: [[UInt8]: Int] = [:]   // 其他電腦學到的次數（sync.py），選字時與自己的相加
+    private var peerBi: [[UInt8]: Int] = [:]
     private var ngramCache: [[UInt8]: Int] = [:]
 
     init(modelDB: String, userDB: String) throws {
@@ -108,9 +110,11 @@ final class Model {
         if !cs.isEmpty {
             var last = String.UnicodeScalarView()
             last.append(cs[cs.count - 1])
-            s += W_USER_BI * log1p(Double(userBi[bkey(String(last) + ch)] ?? 0))
+            let k = bkey(String(last) + ch)
+            s += W_USER_BI * log1p(Double((userBi[k] ?? 0) + (peerBi[k] ?? 0)))
         }
-        s += W_USER_UNI * log1p(Double(userUni[bkey(ch)] ?? 0))
+        let k = bkey(ch)
+        s += W_USER_UNI * log1p(Double((userUni[k] ?? 0) + (peerUni[k] ?? 0)))
         return s
     }
 
@@ -170,6 +174,13 @@ final class Model {
             sqlite3_step(st)
         }
         sqlite3_finalize(st)
+    }
+
+    func setPeers(uni: [String: Int], bi: [String: Int]) {
+        peerUni = [:]
+        peerBi = [:]
+        for (c, n) in uni { peerUni[bkey(c), default: 0] += n }
+        for (c, n) in bi { peerBi[bkey(c), default: 0] += n }
     }
 
     func learn(_ ch: String, prev: String = "", corrected: Bool = false) {

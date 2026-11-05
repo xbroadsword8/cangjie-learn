@@ -14,7 +14,7 @@ import time
 from keycodes import VK_CAPITAL, VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT
 from textService import TextService
 
-from .core import settings
+from .core import settings, sync
 from .core.composer import RADICALS, Composer
 from .core.model import Model
 from .keymap import keysym_name
@@ -24,8 +24,10 @@ ICON_DIR = os.path.join(HERE, "..", "..", "cinbase", "icons")
 USER_DB = os.path.join(os.environ.get("APPDATA", HERE), "PIME", "cjlearn", "user.db")
 SETTINGS_FILE = os.path.join(os.path.dirname(USER_DB), "settings.json")
 SETTINGS = settings.load(SETTINGS_FILE)   # 所有輸入框共用
+PEERS = sync.PeerWatcher(os.path.dirname(USER_DB))  # 其他電腦的學習資料（sync.py 同步到 sync\）
 ID_MODE_ICON = 1
 ID_CLEAR_ON_ERROR = 2
+ID_SYNC_STATUS = 3
 DUP_FILTER_SEC = 0.05   # TSF 偶爾對同一個按鍵重複呼叫 filterKeyDown，這段時間內的重複不再處理
 
 _model = None
@@ -52,6 +54,7 @@ class CangjieLearnTextService(TextService):
     def onActivate(self):
         TextService.onActivate(self)
         self.comp.clear_on_error = SETTINGS["clear_on_error"]
+        PEERS.poll(shared_model())
         self.setSelKeys("123456789")
         self.customizeUI(candPerRow=1, candUseCursor=True)
         self.addButton("windows-mode-icon", icon=self._mode_icon(), tooltip="中英文切換（單按 Shift）",
@@ -79,7 +82,11 @@ class CangjieLearnTextService(TextService):
     def onMenu(self, buttonId):
         # 工作列「中／英」圖示按右鍵的選單（沒有 edit session：只回選單，不送畫面）
         if buttonId == "windows-mode-icon":
-            return [{"text": "打錯碼按空白清掉", "id": ID_CLEAR_ON_ERROR, "checked": SETTINGS["clear_on_error"]}]
+            items = [{"text": "打錯碼按空白清掉", "id": ID_CLEAR_ON_ERROR, "checked": SETTINGS["clear_on_error"]}]
+            status = sync.status_text(os.path.dirname(USER_DB))
+            if status:
+                items.append({"text": status, "id": ID_SYNC_STATUS, "enabled": False})
+            return items
         return None
 
     def onCommand(self, commandId, commandType):
@@ -87,7 +94,7 @@ class CangjieLearnTextService(TextService):
             SETTINGS["clear_on_error"] = not SETTINGS["clear_on_error"]
             self.comp.clear_on_error = SETTINGS["clear_on_error"]
             try:
-                settings.save(SETTINGS_FILE, SETTINGS)
+                settings.update(SETTINGS_FILE, clear_on_error=SETTINGS["clear_on_error"])
             except OSError:
                 pass
         elif commandId == ID_MODE_ICON:

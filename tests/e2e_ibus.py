@@ -103,7 +103,7 @@ def main():
         type_str("qqqq ")
         key("Escape")
         results.append(check(f"關掉選項：打錯碼按空白停住（存檔 {saved}）", "", [])
-                       and saved == {"clear_on_error": False})
+                       and saved["clear_on_error"] is False)
         ic.property_activate("ClearOnError", IBus.PropState.CHECKED)
         pump(0.3)
         type_str("qqqq hqi ")

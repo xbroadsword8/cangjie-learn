@@ -1,5 +1,5 @@
 // 外殼測試：假的輸入框（IMKTextInput）＋合成的 NSEvent，直接驅動 CangjieLearnInputController。不需要畫面。
-// 編譯：swiftc -swift-version 5 mac/Core/*.swift mac/App/{KeyMap,CandidateWindow,InputController}.swift mac/tests/ShellTest.swift \
+// 編譯：swiftc -swift-version 5 mac/Core/*.swift mac/App/{KeyMap,CandidateWindow,InputController,Sync}.swift mac/tests/ShellTest.swift \
 //        -framework Cocoa -framework InputMethodKit -o shelltest
 // 執行：CJLEARN_NO_UI=1 CJLEARN_MODEL_DB=data/model.db CJLEARN_USER_DB=<暫存檔> ./shelltest
 import Cocoa
@@ -138,6 +138,26 @@ check("選單關掉後打錯碼停住", { d.type("qqqq "); return d.client.marke
 check("選項存檔", (try? String(contentsOfFile: Settings.shared.path, encoding: .utf8))?.contains("false") ?? false, true)
 check("關掉後選單不打勾", d.ctl.menu()!.items[0].state == .off, true)
 d.ctl.perform(menu.items[0].action!, with: menu.items[0])
+
+// 同步：別台的學習資料算進來、自己的檔不重複算、選單顯示狀態、存設定不會蓋掉 sync_name
+do {
+    let fm = FileManager.default
+    try? fm.createDirectory(atPath: dataDir + "/sync", withIntermediateDirectories: true)
+    var cfg = (try? JSONSerialization.jsonObject(with: fm.contents(atPath: Settings.shared.path) ?? Data())) as? [String: Any] ?? [:]
+    cfg["sync_remote"] = "x"; cfg["sync_name"] = "me"
+    try! JSONSerialization.data(withJSONObject: cfg).write(to: URL(fileURLWithPath: Settings.shared.path))
+    let picked = sharedModel.candidates(code: "a", ctx: "")[1].ch
+    try! JSONSerialization.data(withJSONObject: ["uni": [picked: 50], "bi": [:]]).write(to: URL(fileURLWithPath: dataDir + "/sync/other.json"))
+    try! JSONSerialization.data(withJSONObject: ["uni": ["日": 9999], "bi": [:]]).write(to: URL(fileURLWithPath: dataDir + "/sync/me.json"))
+    check("讀到別台的檔", Sync.PeerWatcher(dataDir: dataDir, interval: 0).poll(sharedModel), true)
+    check("別台學的排第一、自己的檔不重複算", sharedModel.candidates(code: "a", ctx: "")[0].ch, picked)
+    let m = d.ctl.menu()!
+    check("選單顯示同步狀態", m.items.count > 1 ? m.items[1].title : "", "同步：還沒執行過")
+    d.ctl.perform(m.items[0].action!, with: m.items[0])
+    d.ctl.perform(m.items[0].action!, with: m.items[0])
+    let after = (try? JSONSerialization.jsonObject(with: fm.contents(atPath: Settings.shared.path)!)) as? [String: Any]
+    check("切選項不會蓋掉 sync_name", after?["sync_name"] as? String ?? "", "me")
+}
 
 print(failed == 0 ? "ALL PASSED" : "FAILED \(failed)")
 exit(failed == 0 ? 0 : 1)

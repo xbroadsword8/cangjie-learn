@@ -24,11 +24,13 @@ let sharedModel: Model = {
 }()
 
 let candidateWindow = CandidateWindow()
+let dataDir = (userDBPath as NSString).deletingLastPathComponent
+let peers = Sync.PeerWatcher(dataDir: dataDir)   // 其他電腦的學習資料（sync.py 同步到 sync/）
 
 /// 使用者選項：學習資料旁的 settings.json，格式與 Linux／Windows 版相同（cjlearn/settings.py）。
 final class Settings {
     static let shared = Settings()
-    let path = (userDBPath as NSString).deletingLastPathComponent + "/settings.json"
+    let path = dataDir + "/settings.json"
     var clearOnError = true   // 打錯碼（沒有候選）按空白或數字鍵：清掉字碼
 
     init() {
@@ -39,8 +41,12 @@ final class Settings {
         }
     }
 
+    /// 重讀再改：sync.py 會寫 sync_name 等其他設定，不能整份蓋掉
     func save() {
-        let obj: [String: Any] = ["clear_on_error": clearOnError]
+        var obj: [String: Any] = [:]
+        if let data = FileManager.default.contents(atPath: path),
+           let old = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] { obj = old }
+        obj["clear_on_error"] = clearOnError
         guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) else { return }
         try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
                                                  withIntermediateDirectories: true)
@@ -61,6 +67,7 @@ final class CangjieLearnInputController: IMKInputController {
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
         comp.clearOnError = Settings.shared.clearOnError
+        peers.poll(sharedModel)
         comp.reset()
         hasMarked = false
     }
@@ -71,6 +78,12 @@ final class CangjieLearnInputController: IMKInputController {
         let item = NSMenuItem(title: "打錯碼按空白清掉", action: #selector(toggleClearOnError(_:)), keyEquivalent: "")
         item.state = Settings.shared.clearOnError ? .on : .off
         menu.addItem(item)
+        let status = Sync.statusText(dataDir)
+        if !status.isEmpty {
+            let s = NSMenuItem(title: status, action: nil, keyEquivalent: "")
+            s.isEnabled = false
+            menu.addItem(s)
+        }
         return menu
     }
 

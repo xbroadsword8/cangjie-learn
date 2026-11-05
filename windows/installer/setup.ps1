@@ -8,6 +8,9 @@ $Clsid = '{35F67E9D-A54D-4177-9697-8B0AB71A9E04}'   # PIMETextService
 $Guid = '{42D1BA3B-DC86-44CE-AA0B-29BE3392897F}'    # 倉頡學習版的 profile（ime.json）
 $Tip = "0404:$Clsid$Guid"
 $Log = Join-Path $env:TEMP 'cangjie-learn-setup.log'
+$TaskName = 'CangjieLearnSync'
+$UserData = Join-Path $env:APPDATA 'PIME\cjlearn'
+$MinGit = Join-Path $PSScriptRoot 'mingit'      # setup.ps1 放在安裝目錄（Program Files\CangjieLearnPIME）
 
 function Say($msg) { $line = "$(Get-Date -Format 'HH:mm:ss') $msg"; Write-Output $line; Add-Content -Path $Log -Value $line -Encoding UTF8 }
 function Fail($msg) { Say "失敗：$msg"; exit 1 }
@@ -60,6 +63,49 @@ function Register-Pime($pime) {
     Say 'PIME 已重新註冊'
 }
 
+# 學習資料同步：MinGit（免安裝的官方 git）＋這台專用的 ssh 金鑰＋每 15 分鐘的排程。
+# 版本庫網址不在這裡：由 settings.json 的 sync_remote 決定，沒設就不同步。失敗不影響輸入法本身。
+function Install-Sync($pime, $payload) {
+    try {
+        $zip = Get-ChildItem $payload -Filter 'MinGit-*-64-bit.zip' | Select-Object -First 1
+        if (-not $zip) { Say '安裝包沒有 MinGit，略過同步設定'; return }
+        if (Test-Path $MinGit) { Remove-Item $MinGit -Recurse -Force }
+        Expand-Archive $zip.FullName $MinGit -Force
+        Say "已安裝 $($zip.Name) 到 $MinGit"
+        New-Item -ItemType Directory -Force $UserData | Out-Null
+        $key = Join-Path $UserData 'sync_key'
+        if (-not (Test-Path $key)) {
+            # MinGit 沒附 ssh-keygen，用 Windows 內建的 OpenSSH（Windows 10 1809 起都有）。
+            # NSIS 是 32 位元，System32 會被轉向到 SysWOW64（那裡沒有 OpenSSH），要走 Sysnative
+            $sys = if ([Environment]::Is64BitProcess) { 'System32' } else { 'Sysnative' }
+            $kg = Start-Process (Join-Path $env:WINDIR "$sys\OpenSSH\ssh-keygen.exe") -Wait -PassThru -NoNewWindow `
+                -ArgumentList "-q -t ed25519 -N `"`" -C cjlearn-$($env:COMPUTERNAME.ToLower()) -f `"$($key -replace '\\','/')`""
+            if ($kg.ExitCode -ne 0 -or -not (Test-Path $key)) { throw '產生同步金鑰失敗' }
+        }
+        Say "同步金鑰（要加到伺服器才能同步）：$(Get-Content "$key.pub")"
+        $py = Join-Path $pime 'python\python3\pythonw.exe'
+        $script = Join-Path $pime 'python\input_methods\cjlearn\core\sync.py'
+        $taskArgs = "`"$script`" `"$UserData`" --git `"$(Join-Path $MinGit 'cmd\git.exe')`" --ssh `"$(Join-Path $MinGit 'usr\bin\ssh.exe')`""
+        $action = New-ScheduledTaskAction -Execute $py -Argument $taskArgs
+        $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 15)
+        $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name   # ssh 登入時 USERDOMAIN 會是 WORKGROUP，不能拿來拼
+        $logon = New-ScheduledTaskTrigger -AtLogOn -User $me
+        $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive
+        $opt = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+            -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew
+        Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger, $logon -Principal $principal `
+            -Settings $opt -Description '倉頡學習版：同步學習資料' -Force | Out-Null
+        Say "已設定排程 $TaskName（每 15 分鐘）"
+    } catch { Say "同步設定失敗（輸入法照常可用）：$_" }
+}
+
+function Remove-Sync {
+    if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) {
+        Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false; Say "已移除排程 $TaskName"
+    }
+    if (Test-Path $MinGit) { Remove-Item $MinGit -Recurse -Force -ErrorAction SilentlyContinue; Say "已刪除 $MinGit" }
+}
+
 function Profile-Keys {
     foreach ($root in 'HKLM:\SOFTWARE\Microsoft\CTF\TIP', 'HKLM:\SOFTWARE\WOW6432Node\Microsoft\CTF\TIP', 'HKCU:\SOFTWARE\Microsoft\CTF\TIP') {
         "$root\$Clsid\LanguageProfile\0x00000404\$Guid"
@@ -89,6 +135,7 @@ $pime = Find-Pime
 if ($Uninstall) {
     if (-not $pime) { Say '找不到 PIME，只清理輸入法清單' }
     Remove-Tip
+    Remove-Sync
     if ($pime) {
         $dst = Join-Path $pime 'python\input_methods\cjlearn'
         # 後端開著 data\model.db；結束它後趁 PIMELauncher 還沒重開時刪，失敗就重試
@@ -149,5 +196,6 @@ Register-Pime $pime
 if (-not (Test-Path (Profile-Keys | Select-Object -First 1))) { Fail '註冊後找不到倉頡學習版的 TSF 設定' }
 Restart-Backend $pime
 Add-Tip
+Install-Sync $pime $Source
 Say '安裝完成'
 exit 0

@@ -39,6 +39,7 @@ class Model:
         )
         self._user_uni = dict(self.user.execute("select ch, n from uni"))
         self._user_bi = dict(self.user.execute("select s, n from bi"))
+        self._peer_uni, self._peer_bi = {}, {}   # 其他電腦學到的次數（sync.py），選字時與自己的相加
         self._ngram_cache = {}
 
     # --- 查詢 ---
@@ -60,8 +61,9 @@ class Model:
                 if f:
                     s += W_NGRAM[k] * math.log1p(f)
         if ctx:
-            s += W_USER_BI * math.log1p(self._user_bi.get(ctx[-1] + ch, 0))
-        s += W_USER_UNI * math.log1p(self._user_uni.get(ch, 0))
+            k = ctx[-1] + ch
+            s += W_USER_BI * math.log1p(self._user_bi.get(k, 0) + self._peer_bi.get(k, 0))
+        s += W_USER_UNI * math.log1p(self._user_uni.get(ch, 0) + self._peer_uni.get(ch, 0))
         return s
 
     def candidates(self, code, ctx=""):
@@ -83,6 +85,9 @@ class Model:
                 comp.append(Candidate(ch, c, False, self.score(ch, ctx)))
         comp.sort(key=lambda c: -c.score)
         return exact + comp[:MAX_COMPLETIONS]
+
+    def set_peers(self, uni, bi):
+        self._peer_uni, self._peer_bi = uni, bi
 
     # --- 學習 ---
     def learn(self, ch, prev="", corrected=False):

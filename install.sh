@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 安裝「倉頡學習版」IBus 引擎（不需 root）。
 # 做的事：1) 建 data/model.db  2) 放啟動殼與 component XML 到 ~/.local
-#         3) 讓 GNOME 的 ibus-daemon 透過 IBUS_COMPONENT_PATH 找到它  4) 重啟 ibus
+#         3) 讓 GNOME 的 ibus-daemon 透過 IBUS_COMPONENT_PATH 找到它  4) 同步排程  5) 重啟 ibus
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 LIBEXEC="$HOME/.local/libexec"
@@ -49,7 +49,29 @@ cat > "$DROPIN/cangjie-learn.conf" <<CONF
 [Service]
 Environment=IBUS_COMPONENT_PATH=/usr/share/ibus/component:$COMPDIR
 CONF
+# 學習資料同步：每 15 分鐘跑一次 sync.py（settings.json 沒設 sync_remote 時什麼都不做）
+UNITDIR="$HOME/.config/systemd/user"
+cat > "$UNITDIR/cangjie-learn-sync.service" <<UNIT
+[Unit]
+Description=倉頡學習版：同步學習資料
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 "$ROOT/cjlearn/sync.py" "$HOME/.local/share/cangjie-learn"
+UNIT
+cat > "$UNITDIR/cangjie-learn-sync.timer" <<UNIT
+[Unit]
+Description=倉頡學習版：每 15 分鐘同步學習資料
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+
+[Install]
+WantedBy=timers.target
+UNIT
 systemctl --user daemon-reload
+systemctl --user enable --now cangjie-learn-sync.timer
 # IBUS_COMPONENT_PATH 會取代（不是附加）系統路徑，所以上面一定要含 /usr/share/ibus/component
 IBUS_COMPONENT_PATH=/usr/share/ibus/component:$COMPDIR ibus write-cache 2>/dev/null || true
 systemctl --user restart "$UNIT"

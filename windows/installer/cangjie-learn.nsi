@@ -27,6 +27,7 @@ Section "Install"
   File /r "${STAGE}\cjlearn"
   File "${STAGE}\smoke_pime.py"
   File "${STAGE}\PIME-1.3.0-stable-setup.exe"
+  File "${STAGE}\MinGit-*-64-bit.zip"
   SetOutPath "$INSTDIR"
   File "${STAGE}\setup.ps1"
 

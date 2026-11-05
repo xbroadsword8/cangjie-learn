@@ -46,6 +46,16 @@ systemd drop-in `~/.config/systemd/user/org.freedesktop.IBus.session.GNOME.servi
 
 移除：刪掉上面三個檔、`systemctl --user daemon-reload && systemctl --user restart org.freedesktop.IBus.session.GNOME.service`，再從 GNOME 輸入來源拿掉「倉頡學習版」。
 
+## 學習資料同步（三個平台共用）
+
+每台電腦把自己的次數存成 `<名稱>.json`，經一個 git 版本庫交換；選字時把其他台的次數加進來（`cjlearn/sync.py`）。
+- 輸入法本身不連網，只讀 `<資料夾>/sync/`；git 推拉由排程每 15 分鐘做：Linux systemd timer `cangjie-learn-sync`（install.sh 裝）、
+  Windows 工作排程 `CangjieLearnSync`（安裝程式裝，附 MinGit）、Mac launchd `com.xmac.inputmethod.CangjieLearn.sync`（mac/build.sh 裝）。
+- 每台只寫自己的檔，所以不會有合併衝突。重灌後學習資料是空的、版本庫裡有同名檔 → 自動接回。
+- 設定在 `settings.json`：`sync_remote`（git ssh 網址，**不寫進 repo**）、`sync_name`（檔名，第一次同步時填入）。沒設 `sync_remote` 就不同步。
+- 每台用專用金鑰 `<資料夾>/sync_key`；伺服器端 authorized_keys 要加 `command="…/cjlearn-git-only",restrict`，只能存取這一個版本庫。
+- 狀態寫在 `sync_status.json`，輸入法選單會顯示「同步：N 分鐘前成功」或「⚠ 同步失敗（上次成功…）」。
+
 ## 資料來源
 
 - 碼表：`/usr/share/ibus-table/tables/cangjie3.db`
