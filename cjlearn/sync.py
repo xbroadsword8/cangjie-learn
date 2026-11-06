@@ -121,8 +121,10 @@ class Git:
             GIT_TERMINAL_PROMPT="0")
 
     def __call__(self, *args, check=True):
+        # Windows 排程用 pythonw 跑，git.exe 是主控台程式，不加這旗標每次都會跳出 CMD 視窗（ssh 沿用同一個隱藏主控台）
         r = subprocess.run([self.git, "-C", str(self.repo), *args], env=self.env,
-                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+                           capture_output=True, text=True, encoding="utf-8", errors="replace",
+                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         if check and r.returncode:
             raise RuntimeError(f"git {' '.join(args)}：{r.stderr.strip()}")
         return r
