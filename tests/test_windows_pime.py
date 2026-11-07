@@ -1,4 +1,5 @@
 """用 PIME 1.3 真正的 textService.py 模擬 Windows 按鍵訊息，測 windows/pime/cjlearn 外殼（不需 Windows）。"""
+import os
 import shutil
 import subprocess
 import sys
@@ -205,3 +206,12 @@ def test_peers_and_sync_status(svc, tmp_path):
     assert svc.comp.model.candidates("a")[0].ch == picked      # 別台學的算進來，自己的檔不重複算
     menu = svc.handleRequest({"method": "onMenu", "id": "windows-mode-icon"})["return"]
     assert menu[1]["text"] == "同步：還沒執行過" and menu[1]["enabled"] is False
+
+
+def test_mode_icons_bundled(svc):
+    # PIME 預設安裝不含 cinbase，中／英圖示一定要是自己帶的、而且真的在安裝目錄裡
+    for chinese in (True, False):
+        svc.comp.chinese = chinese
+        p = svc._mode_icon()
+        assert os.path.isfile(p), p
+        assert "cinbase" not in p

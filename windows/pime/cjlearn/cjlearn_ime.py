@@ -20,7 +20,8 @@ from .core.model import Model
 from .keymap import keysym_name
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ICON_DIR = os.path.join(HERE, "..", "..", "cinbase", "icons")
+# 自帶圖示：PIME 預設安裝不含 cinbase（倉頡等模組），不能借用它的 icons（2026-11-07 新電腦裝不起來）
+ICON_DIR = os.path.join(HERE, "icons")
 USER_DB = os.path.join(os.environ.get("APPDATA", HERE), "PIME", "cjlearn", "user.db")
 SETTINGS_FILE = os.path.join(os.path.dirname(USER_DB), "settings.json")
 SETTINGS = settings.load(SETTINGS_FILE)   # 所有輸入框共用

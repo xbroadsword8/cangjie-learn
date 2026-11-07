@@ -1,0 +1,1 @@
+Get-ScheduledTask -TaskPath '\Microsoft\Windows\UpdateOrchestrator\*','\Microsoft\Windows\WindowsUpdate\*' -EA SilentlyContinue | % { try { Disable-ScheduledTask -InputObject $_ -EA Stop | Out-Null; "disabled $($_.TaskName)" } catch { "skip $($_.TaskName) $($_.Exception.Message)" } } | Out-File "$PSScriptRoot\sysdis.log" -Encoding utf8

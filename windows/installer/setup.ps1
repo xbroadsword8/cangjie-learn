@@ -37,14 +37,29 @@ function Backend-Pids($pime) {
 
 function Stop-Backend($pime) { Backend-Pids $pime | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue } }
 
-# PIMELauncher 會自動重開被結束的後端；等它回來
-function Restart-Backend($pime) {
-    Stop-Backend $pime
-    for ($i = 0; $i -lt 20; $i++) {
-        Start-Sleep -Milliseconds 500
-        if ((Backend-Pids $pime).Count) { Say 'PIME 後端已重新載入'; return }
+# PIMELauncher 只在啟動時掃一次 input_methods\*\ime.json。第一次裝（或移除）倉頡學習版後不重開它，
+# 切到這個輸入法的程式會整個卡死（log：Backend is not found for text service），要登出再登入才好
+# （2026-11-07 在全新 Windows VM 重現；PIME 安裝程式在我們複製檔案前就把它開起來了）。
+# 安裝程式是系統管理員權限，直接開的啟動器一般程式連不上，所以用一次性排程以登入的使用者（一般權限）開。
+function Restart-Pime($pime) {
+    $exe = Join-Path $pime 'PIMELauncher.exe'
+    if (Get-Process PIMELauncher -ErrorAction SilentlyContinue) {
+        Start-Process $exe -ArgumentList '/quit' -Wait
+        for ($i = 0; $i -lt 20 -and (Get-Process PIMELauncher -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 250 }
+        Get-Process PIMELauncher -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     }
-    Say '注意：PIME 後端沒有自動重開，請登出再登入一次'
+    Stop-Backend $pime
+    $t = 'CangjieLearnStartPime'
+    try {
+        $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
+        $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
+        Register-ScheduledTask -TaskName $t -Action (New-ScheduledTaskAction -Execute $exe) -Principal $principal -Force | Out-Null
+        Start-ScheduledTask -TaskName $t
+        for ($i = 0; $i -lt 20 -and -not (Get-Process PIMELauncher -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
+    } catch { Say "啟動 PIME 失敗：$_" }
+    finally { Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue }
+    if (Get-Process PIMELauncher -ErrorAction SilentlyContinue) { Say 'PIME 已重新啟動' }
+    else { Say '注意：PIME 沒有重新啟動，請登出再登入一次（切到倉頡學習版前）' }
 }
 
 # 註冊時 PIMETextService.dll 會掃描 input_methods\*\ime.json
@@ -153,7 +168,7 @@ if ($Uninstall) {
         $ud = Join-Path $env:APPDATA 'PIME\cjlearn'
         if (Test-Path $ud) { Remove-Item $ud -Recurse -Force; Say "已刪除學習資料 $ud" }
     } else { Say "學習資料保留在 $env:APPDATA\PIME\cjlearn" }
-    if ($pime) { Restart-Backend $pime }
+    if ($pime) { Restart-Pime $pime }
     Say '移除完成'
     exit 0
 }
@@ -167,7 +182,7 @@ if (-not $pime) {
     if (-not $pime) { Fail 'PIME 安裝後仍找不到，請確認 PIME 安裝完成後再執行一次' }
 }
 Say "PIME：$pime"
-foreach ($f in 'python\python3\python.exe', 'python\textService.py', 'python\keycodes.py', 'python\cinbase\icons\chi_half_capsoff.ico') {
+foreach ($f in 'python\python3\python.exe', 'python\textService.py', 'python\keycodes.py') {
     if (-not (Test-Path (Join-Path $pime $f))) { Fail "PIME 缺少 $f（只支援 PIME 1.3）" }
 }
 
@@ -194,7 +209,7 @@ Say '自我測試通過'
 
 Register-Pime $pime
 if (-not (Test-Path (Profile-Keys | Select-Object -First 1))) { Fail '註冊後找不到倉頡學習版的 TSF 設定' }
-Restart-Backend $pime
+Restart-Pime $pime
 Add-Tip
 Install-Sync $pime $Source
 Say '安裝完成'

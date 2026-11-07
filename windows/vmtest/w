@@ -1,0 +1,3 @@
+#!/bin/bash
+# 對 cj-win10 下指令：連線資訊全由環境變數給（不寫進 repo），見 README
+exec timeout ${T:-120} ssh -o ConnectTimeout=8 -o UserKnownHostsFile=${CJ_VMTEST_DIR:?}/kh -i ${CJ_VM_KEY:?} -p ${CJ_VM_PORT:?} ${CJ_VM_USER:?}@${CJ_VM_HOST:?} "$@"

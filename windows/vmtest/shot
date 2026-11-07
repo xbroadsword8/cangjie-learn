@@ -1,0 +1,3 @@
+#!/bin/bash
+# shot <本機輸出檔>：抓 cj-win10 畫面
+timeout 30 ssh ${CJ_LIBVIRT_HOST:?} 'virsh -c qemu:///system screenshot cj-win10 /tmp/cj.ppm >/dev/null && python3 -c "from PIL import Image; Image.open(\"/tmp/cj.ppm\").save(\"/tmp/cj.png\")"' && scp -q ${CJ_LIBVIRT_HOST:?}:/tmp/cj.png "${1:?}"

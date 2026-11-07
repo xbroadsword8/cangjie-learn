@@ -77,7 +77,17 @@ python3 -m pytest -q tests           # 含 test_windows_pime.py：用 PIME 1.3 �
 **安裝程式**：`windows/package.sh` → `windows/dist/cangjie-learn-pime-setup-<日期>.exe`（NSIS 外殼＋`windows/installer/setup.ps1` 做實際步驟，附 PIME 1.3.0 官方安裝檔，sha256 寫在 package.sh）。
 makensis 不需 root：`apt-get download nsis nsis-common` 後 `dpkg -x` 到 `~/.local/opt/nsis`（package.sh 會自動做）。
 setup.ps1 流程：找 PIME（沒有就開附帶的安裝程式）→ 複製 → 用 PIME 的 Python 跑 smoke_pime.py（沒過就撤回）→ regsvr32 → 重開後端 → 加入輸入法清單。移除會清 TSF profile 與清單、預設保留學習資料。
-2026-11-02 在 Win11 測試機 實測 `/S` 安裝（蓋舊版、全新）與移除皆正確，酷倉不受影響；**「沒有 PIME 的電腦」路徑未實測**。成品放 Google Drive `倉頡學習版/`。
+2026-11-02 在 Win11 測試機 實測 `/S` 安裝（蓋舊版、全新）與移除皆正確，酷倉不受影響。成品放 Google Drive `倉頡學習版/`。
+
+⚠ 兩個只有「第一次裝」才會踩到的坑（2026-11-07 在 Windows 10 VM `cj-win10` 重現並修好）：
+- **PIMELauncher 只在啟動時掃一次 `input_methods\*\ime.json`**。第一次裝倉頡學習版後不重開它，切到這個輸入法的程式會整個卡死
+  （log：`%LOCALAPPDATA%\PIME\Log\PIMELauncher.log` 的 `Backend is not found for text service`），要登出再登入才好；只重開 Python 後端沒用。
+  setup.ps1 的 `Restart-Pime` 用 `/quit` 關掉它，再用一次性排程以登入使用者的一般權限重開（安裝程式是系統管理員，直接開的啟動器一般程式連不上）。
+- **PIME 預設安裝不含 cinbase**（倉頡等模組），中／英圖示要自帶（`windows/pime/cjlearn/icons/`）。
+
+VM 測試（快照：`base4` 全新中文 Windows＋瀏覽器、`pime-only` 已有 PIME、`installed` 已裝過）：
+全新 4 回合、已有 PIME 3 回合、重裝 3 回合，全程每 0.5 秒對所有視窗送訊息偵測卡死，裝完不登出就在新記事本打出「我」，10/10 通過；
+同情境用沒修啟動器的版本對照，記事本卡死。腳本與做法在 `windows/vmtest/`。
 
 手動安裝（Win11 測試機，PIME 1.3.0、內建 Python 3.8.10 32 位元；2026-10-31 裝）：
 1. 把 `windows/build/cjlearn` 複製到 `C:\Program Files (x86)\PIME\python\input_methods\cjlearn`

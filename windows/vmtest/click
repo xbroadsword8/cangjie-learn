@@ -1,0 +1,7 @@
+#!/bin/bash
+# click X Y：用 QMP input-send-event 送絕對座標的滑鼠點擊（畫面 1024x768 → 0..32767）
+x=$(( $1 * 32767 / 1023 )); y=$(( $2 * 32767 / 767 ))
+q() { echo "virsh -c qemu:///system qemu-monitor-command cj-win10 '{\"execute\":\"input-send-event\",\"arguments\":{\"events\":[$1]}}' >/dev/null"; }
+mv="{\"type\":\"abs\",\"data\":{\"axis\":\"x\",\"value\":$x}},{\"type\":\"abs\",\"data\":{\"axis\":\"y\",\"value\":$y}}"
+dn='{"type":"btn","data":{"down":true,"button":"left"}}'; up='{"type":"btn","data":{"down":false,"button":"left"}}'
+timeout 20 ssh ${CJ_LIBVIRT_HOST:?} "$(q "$mv"); sleep 0.2; $(q "$dn"); sleep 0.1; $(q "$up")"
