@@ -22,6 +22,7 @@ struct DiffTest {
             let keys = cs["keys"] as! [[Any]]
             let steps = cs["steps"] as! [[Any]]
             let comp = Composer(model: model)
+            comp.fullPunct = (cs["full_punct"] as? NSNumber)?.boolValue ?? false
             var bad: String? = nil
             for (i, k) in keys.enumerated() {
                 let r = comp.process(k[0] as! String, ctrl: (k[1] as! NSNumber).boolValue,

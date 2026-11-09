@@ -108,6 +108,17 @@ def main():
         pump(0.3)
         type_str("qqqq hqi ")
         results.append(check("再打開選項", "我", []))
+        ic.property_activate("FullPunct", IBus.PropState.CHECKED)
+        pump(0.3)
+        saved = json.loads(cfg.read_text())
+        type_str("hqi,")
+        key("period")
+        results.append(check(f"標點直接出全形：逗號、句號不按 Ctrl（存檔 full_punct={saved['full_punct']}）",
+                             "我，。", []) and saved["full_punct"] is True)
+        ic.property_activate("FullPunct", IBus.PropState.UNCHECKED)
+        pump(0.3)
+        key("period")
+        results.append(check("關掉全形：句號交給應用程式", "", ["period"]))
         print(f"{sum(results)}/{len(results)} 通過")
         return 0 if all(results) else 1
     finally:

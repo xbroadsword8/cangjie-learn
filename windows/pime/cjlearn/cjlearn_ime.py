@@ -29,6 +29,7 @@ PEERS = sync.PeerWatcher(os.path.dirname(USER_DB))  # 其他電腦的學習資�
 ID_MODE_ICON = 1
 ID_CLEAR_ON_ERROR = 2
 ID_SYNC_STATUS = 3
+ID_FULL_PUNCT = 4
 DUP_FILTER_SEC = 0.05   # TSF 偶爾對同一個按鍵重複呼叫 filterKeyDown，這段時間內的重複不再處理
 
 _model = None
@@ -55,6 +56,7 @@ class CangjieLearnTextService(TextService):
     def onActivate(self):
         TextService.onActivate(self)
         self.comp.clear_on_error = SETTINGS["clear_on_error"]
+        self.comp.full_punct = SETTINGS["full_punct"]
         PEERS.poll(shared_model())
         self.setSelKeys("123456789")
         self.customizeUI(candPerRow=1, candUseCursor=True)
@@ -83,7 +85,8 @@ class CangjieLearnTextService(TextService):
     def onMenu(self, buttonId):
         # 工作列「中／英」圖示按右鍵的選單（沒有 edit session：只回選單，不送畫面）
         if buttonId == "windows-mode-icon":
-            items = [{"text": "打錯碼按空白清掉", "id": ID_CLEAR_ON_ERROR, "checked": SETTINGS["clear_on_error"]}]
+            items = [{"text": "打錯碼按空白清掉", "id": ID_CLEAR_ON_ERROR, "checked": SETTINGS["clear_on_error"]},
+                     {"text": "標點直接出全形（，。？！）", "id": ID_FULL_PUNCT, "checked": SETTINGS["full_punct"]}]
             status = sync.status_text(os.path.dirname(USER_DB))
             if status:
                 items.append({"text": status, "id": ID_SYNC_STATUS, "enabled": False})
@@ -96,6 +99,13 @@ class CangjieLearnTextService(TextService):
             self.comp.clear_on_error = SETTINGS["clear_on_error"]
             try:
                 settings.update(SETTINGS_FILE, clear_on_error=SETTINGS["clear_on_error"])
+            except OSError:
+                pass
+        elif commandId == ID_FULL_PUNCT:
+            SETTINGS["full_punct"] = not SETTINGS["full_punct"]
+            self.comp.full_punct = SETTINGS["full_punct"]
+            try:
+                settings.update(SETTINGS_FILE, full_punct=SETTINGS["full_punct"])
             except OSError:
                 pass
         elif commandId == ID_MODE_ICON:

@@ -77,12 +77,13 @@ cases = []
 for _ in range(N):
     keys = gen_seq()
     c = Composer(model)
+    c.full_punct = rnd.random() < 0.5   # 選項開關都要比對
     steps = []
     for k, ctrl, shift, alt, rel in keys:
         r = c.process(k, ctrl=ctrl, shift=shift, alt=alt, release=rel)
         steps.append([int(r.handled), r.commit, c.code, c.page, c.cursor, int(c.chinese),
                       "".join(x.ch for x in c.page_cands()), [x.score for x in c.page_cands()]])
-    cases.append({"keys": keys, "steps": steps, "preedit": c.preedit(),
+    cases.append({"keys": keys, "full_punct": c.full_punct, "steps": steps, "preedit": c.preedit(),
                   "page": "".join(x.ch for x in c.page_cands()), "ctx": c.ctx})
 Path(__file__).with_name("cases.json").write_text(json.dumps(cases, ensure_ascii=False), encoding="utf-8")
 commits = sum(1 for cs in cases for s in cs["steps"] if s[1])

@@ -41,6 +41,31 @@ def test_ascii_punct_default(comp):
     assert comp.process("period").handled is False   # 沒在組字：標點交給應用程式（半形）
 
 
+def test_full_punct_option(comp):
+    comp.full_punct = True
+    assert comp.process("comma").commit == "，"                 # 沒在組字：不按 Ctrl 也出全形
+    assert type_keys(comp, "hqi") == ""
+    r = comp.process("period")
+    assert r.handled and r.commit == "我。"                     # 組字中：先送第一候選再接標點
+    assert comp.process("question", shift=True).commit == "？"
+    assert comp.process("bracketleft").commit == "「"
+    assert comp.process("comma", ctrl=True).commit == "，"       # Ctrl＋標點照舊
+    assert comp.process("at", shift=True).handled is False      # 不在清單的符號（@）仍交給應用程式出半形
+    assert type_keys(comp, "hqi") == ""
+    assert comp.process("minus").handled is True and comp.page == 0   # 組字中 - 仍是翻頁
+    comp.process("Escape")
+    comp.process("Shift_L"); comp.process("Shift_L", release=True)    # 切英文
+    assert comp.chinese is False and comp.process("comma").handled is False
+
+
+def test_full_punct_setting_default(tmp_path):
+    from cjlearn import settings
+    p = tmp_path / "settings.json"
+    assert settings.load(p)["full_punct"] is False              # 預設關：既有使用者行為不變
+    settings.update(p, full_punct=True)
+    assert settings.load(p)["full_punct"] is True
+
+
 def test_ctrl_punct(comp):
     assert comp.process("comma", ctrl=True).commit == "，"
     assert type_keys(comp, "hqi") == ""

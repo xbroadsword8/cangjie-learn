@@ -32,13 +32,18 @@ final class Settings {
     static let shared = Settings()
     let path = dataDir + "/settings.json"
     var clearOnError = true   // 打錯碼（沒有候選）按空白或數字鍵：清掉字碼
+    var fullPunct = false     // 中文模式常用標點不按 Ctrl 也出全形
 
     init() {
-        if let data = FileManager.default.contents(atPath: path),
-           let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let n = obj["clear_on_error"] as? NSNumber, CFGetTypeID(n) == CFBooleanGetTypeID() {
-            clearOnError = n.boolValue   // 只認 true／false，跟 Python 版一樣忽略型別不對的值
+        guard let data = FileManager.default.contents(atPath: path),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+        // 只認 true／false，跟 Python 版一樣忽略型別不對的值
+        func flag(_ k: String) -> Bool? {
+            guard let n = obj[k] as? NSNumber, CFGetTypeID(n) == CFBooleanGetTypeID() else { return nil }
+            return n.boolValue
         }
+        if let v = flag("clear_on_error") { clearOnError = v }
+        if let v = flag("full_punct") { fullPunct = v }
     }
 
     /// 重讀再改：sync.py 會寫 sync_name 等其他設定，不能整份蓋掉
@@ -47,6 +52,7 @@ final class Settings {
         if let data = FileManager.default.contents(atPath: path),
            let old = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] { obj = old }
         obj["clear_on_error"] = clearOnError
+        obj["full_punct"] = fullPunct
         guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted]) else { return }
         try? FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
                                                  withIntermediateDirectories: true)
@@ -67,6 +73,7 @@ final class CangjieLearnInputController: IMKInputController {
     override func activateServer(_ sender: Any!) {
         super.activateServer(sender)
         comp.clearOnError = Settings.shared.clearOnError
+        comp.fullPunct = Settings.shared.fullPunct
         peers.poll(sharedModel)
         comp.reset()
         hasMarked = false
@@ -78,6 +85,9 @@ final class CangjieLearnInputController: IMKInputController {
         let item = NSMenuItem(title: "打錯碼按空白清掉", action: #selector(toggleClearOnError(_:)), keyEquivalent: "")
         item.state = Settings.shared.clearOnError ? .on : .off
         menu.addItem(item)
+        let fp = NSMenuItem(title: "標點直接出全形（，。？！）", action: #selector(toggleFullPunct(_:)), keyEquivalent: "")
+        fp.state = Settings.shared.fullPunct ? .on : .off
+        menu.addItem(fp)
         let status = Sync.statusText(dataDir)
         if !status.isEmpty {
             let s = NSMenuItem(title: status, action: nil, keyEquivalent: "")
@@ -91,6 +101,12 @@ final class CangjieLearnInputController: IMKInputController {
         Settings.shared.clearOnError.toggle()
         Settings.shared.save()
         comp.clearOnError = Settings.shared.clearOnError
+    }
+
+    @objc func toggleFullPunct(_ sender: Any?) {
+        Settings.shared.fullPunct.toggle()
+        Settings.shared.save()
+        comp.fullPunct = Settings.shared.fullPunct
     }
 
     override func deactivateServer(_ sender: Any!) {

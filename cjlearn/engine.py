@@ -63,6 +63,12 @@ class CangjieLearnEngine(IBus.Engine):
             tooltip=IBus.Text.new_from_string("沒有候選字時按空白或數字鍵，清掉字碼"),
             sensitive=True, visible=True, state=IBus.PropState.UNCHECKED,
         )
+        self.punct_prop = IBus.Property(
+            key="FullPunct", prop_type=IBus.PropType.TOGGLE,
+            label=IBus.Text.new_from_string("標點直接出全形"),
+            tooltip=IBus.Text.new_from_string("中文模式按 ，。？！ 等不用加 Ctrl（仿微軟倉頡）"),
+            sensitive=True, visible=True, state=IBus.PropState.UNCHECKED,
+        )
         self.sync_prop = IBus.Property(   # 同步狀態（只顯示，沒設定同步就隱藏）
             key="SyncStatus", prop_type=IBus.PropType.NORMAL, label=IBus.Text.new_from_string(""),
             sensitive=False, visible=False, state=IBus.PropState.UNCHECKED,
@@ -70,6 +76,7 @@ class CangjieLearnEngine(IBus.Engine):
         self.props_list = IBus.PropList()
         self.props_list.append(self.mode_prop)
         self.props_list.append(self.clear_prop)
+        self.props_list.append(self.punct_prop)
         self.props_list.append(self.sync_prop)
         self._apply_settings()
 
@@ -183,6 +190,9 @@ class CangjieLearnEngine(IBus.Engine):
         on = SETTINGS["clear_on_error"]
         self.comp.clear_on_error = on
         self.clear_prop.set_state(IBus.PropState.CHECKED if on else IBus.PropState.UNCHECKED)
+        full = SETTINGS["full_punct"]
+        self.comp.full_punct = full
+        self.punct_prop.set_state(IBus.PropState.CHECKED if full else IBus.PropState.UNCHECKED)
         text = sync.status_text(USER_DB.parent)
         self.sync_prop.set_label(IBus.Text.new_from_string(text))
         self.sync_prop.set_visible(bool(text))
@@ -196,6 +206,14 @@ class CangjieLearnEngine(IBus.Engine):
                 LOG.exception("儲存設定失敗")
             self._apply_settings()
             self.update_property(self.clear_prop)
+        elif prop_name == "FullPunct":
+            SETTINGS["full_punct"] = state == IBus.PropState.CHECKED
+            try:
+                settings.update(SETTINGS_FILE, full_punct=SETTINGS["full_punct"])
+            except OSError:
+                LOG.exception("儲存設定失敗")
+            self._apply_settings()
+            self.update_property(self.punct_prop)
 
     # --- 滑鼠與系統事件 ---
     def do_candidate_clicked(self, index, button, state):

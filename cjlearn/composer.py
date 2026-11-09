@@ -1,6 +1,8 @@
 """按鍵狀態機：倉頡組字、選字、標點、中英切換。不依賴 IBus，鍵用 X keysym 名稱表示。
 
 標點邏輯（仿酷倉）：中文模式下標點鍵預設出半形英文標點；加按 Ctrl 才出中文全形標點。
+選項 full_punct（仿微軟倉頡）：中文模式下 FULL_PUNCT_KEYS 這些常用標點不按 Ctrl 也出全形；
+其他符號（@ # - = / 等，網址、email、算式會用到）照舊出半形。
 中英切換：單按一下 Shift（中間沒按別的鍵）。
 """
 
@@ -26,6 +28,12 @@ ASCII_PUNCT = {
     "dollar": "$", "percent": "%", "ampersand": "&", "asterisk": "*", "plus": "+",
     "equal": "=", "bar": "|", "grave": "`",
 }
+# full_punct 開啟時，中文模式不按 Ctrl 也出全形的鍵（其餘符號仍出半形）
+FULL_PUNCT_KEYS = frozenset({
+    "comma", "period", "semicolon", "colon", "question", "exclam", "backslash",
+    "bracketleft", "bracketright", "braceleft", "braceright",
+    "parenleft", "parenright", "less", "greater",
+})
 CONTEXT_BREAK = {"Return", "KP_Enter", "Tab", "Left", "Right", "Up", "Down", "Home", "End",
                  "Page_Up", "Page_Down", "Delete", "Escape"}
 MAX_CODE = 5
@@ -50,6 +58,7 @@ class Composer:
         self.cursor = 0          # 頁內游標
         self.ctx = ""            # 最近送出的中文字（上文）
         self.clear_on_error = True   # 打錯碼（沒有候選）按空白或數字鍵：清掉字碼
+        self.full_punct = False      # 中文模式常用標點不按 Ctrl 也出全形（仿微軟倉頡）
         self._shift_alone = False
 
     # --- 對外狀態 ---
@@ -133,6 +142,11 @@ class Composer:
             self.code += key
             self._refresh()
             return Result(True)
+
+        if self.full_punct and key in FULL_PUNCT_KEYS:
+            out = self._flush() + CJK_PUNCT[key]
+            self.ctx = ""
+            return Result(True, out)
 
         if self.code:
             return self._process_composing(key)

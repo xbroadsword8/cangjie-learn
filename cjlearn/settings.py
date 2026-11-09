@@ -4,6 +4,7 @@ from pathlib import Path
 
 DEFAULTS = {
     "clear_on_error": True,   # 打錯碼（沒有任何候選）按空白或數字鍵：清掉字碼，而不是停在那裡
+    "full_punct": False,      # 中文模式常用標點（，。？！等）不按 Ctrl 也出全形，仿微軟倉頡
     "sync_remote": "",        # 學習資料同步用的 git 版本庫（ssh 網址）；空的＝不同步
     "sync_name": "",          # 這台電腦在同步資料夾裡的檔名（sync.py 第一次執行時填入）
 }

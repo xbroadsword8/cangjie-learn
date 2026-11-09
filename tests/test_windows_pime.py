@@ -121,6 +121,22 @@ def test_plain_punct_passes_through(svc):
     assert kb.tap(ord("C"), VK["CONTROL"]) is False
 
 
+def test_full_punct_menu(svc, tmp_path):
+    kb = Keyboard(svc)
+    menu = svc.handleRequest({"method": "onMenu", "id": "windows-mode-icon"})
+    check_reply("onMenu", menu)
+    item = [x for x in menu["return"] if "全形" in x.get("text", "")][0]
+    assert item["checked"] is False
+    check_reply("onCommand", svc.handleRequest({"method": "onCommand", "id": item["id"], "type": 1}))
+    cfg = tmp_path / "appdata" / "PIME" / "cjlearn" / "settings.json"
+    assert '"full_punct": true' in cfg.read_text()
+    kb.type("hqi,")
+    assert kb.out == "我，"
+    kb.out = ""
+    assert kb.tap(VK["PERIOD"]) is True
+    assert kb.out == "。"
+
+
 def test_shift_toggle(svc):
     kb = Keyboard(svc)
     kb.tap(VK["SHIFT"])
@@ -205,7 +221,7 @@ def test_peers_and_sync_status(svc, tmp_path):
     svc.handleRequest({"method": "onActivate", "isKeyboardOpen": True})
     assert svc.comp.model.candidates("a")[0].ch == picked      # 別台學的算進來，自己的檔不重複算
     menu = svc.handleRequest({"method": "onMenu", "id": "windows-mode-icon"})["return"]
-    assert menu[1]["text"] == "同步：還沒執行過" and menu[1]["enabled"] is False
+    assert menu[-1]["text"] == "同步：還沒執行過" and menu[-1]["enabled"] is False
 
 
 def test_mode_icons_bundled(svc):

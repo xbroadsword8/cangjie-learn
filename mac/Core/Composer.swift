@@ -28,6 +28,12 @@ let ASCII_PUNCT: [String: String] = [
     "dollar": "$", "percent": "%", "ampersand": "&", "asterisk": "*", "plus": "+",
     "equal": "=", "bar": "|", "grave": "`",
 ]
+// fullPunct 開啟時，中文模式不按 Ctrl 也出全形的鍵（其餘符號仍出半形）
+let FULL_PUNCT_KEYS: Set<String> = [
+    "comma", "period", "semicolon", "colon", "question", "exclam", "backslash",
+    "bracketleft", "bracketright", "braceleft", "braceright",
+    "parenleft", "parenright", "less", "greater",
+]
 let CONTEXT_BREAK: Set<String> = ["Return", "KP_Enter", "Tab", "Left", "Right", "Up", "Down", "Home", "End",
                                   "Page_Up", "Page_Down", "Delete", "Escape"]
 let MAX_CODE = 5
@@ -55,6 +61,7 @@ final class Composer {
     var cursor = 0           // 頁內游標
     var ctx = ""             // 最近送出的中文字（上文）
     var clearOnError = true  // 打錯碼（沒有候選）按空白或數字鍵：清掉字碼
+    var fullPunct = false    // 中文模式常用標點不按 Ctrl 也出全形（仿微軟倉頡）
     private var shiftAlone = false
 
     init(model: Model) { self.model = model }
@@ -148,6 +155,12 @@ final class Composer {
             code += key
             refresh()
             return ComposerResult(handled: true)
+        }
+
+        if fullPunct && FULL_PUNCT_KEYS.contains(key), let p = CJK_PUNCT[key] {
+            let out = flush() + p
+            ctx = ""
+            return ComposerResult(handled: true, commit: out)
         }
 
         if !code.isEmpty { return processComposing(key) }
