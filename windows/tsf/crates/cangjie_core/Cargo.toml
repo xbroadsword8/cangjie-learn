@@ -1,0 +1,12 @@
+[package]
+name = "cangjie_core"
+version = "0.1.0"
+edition = "2021"
+description = "倉頡學習版輸入核心（cjlearn 的純 Rust 移植，不依賴 Windows API）"
+
+[dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde_json = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]

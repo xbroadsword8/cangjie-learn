@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 // Copyright (c) 2026 Kan-Ru Chen
+// 倉頡學習版修改：換 GUID 與名稱、只註冊正體中文 profile。
 
 #![windows_subsystem = "windows"]
 
@@ -28,11 +29,10 @@ windows::core::link!("input.dll" "system" fn InstallLayoutOrTip(psz: *const u16,
 const ILOT_INSTALL: u32 = 0x00000000;
 // const ILOT_UNINSTALL: u32 = 0x00000001;
 
-const CHEWING_TSF_CLSID: GUID = GUID::from_u128(0x13F2EF08_575C_4D8C_88E0_F67BB8052B84);
-const CHEWING_ZH_TW_PROFILE_GUID: GUID = GUID::from_u128(0xCE45F71D_CE79_41D1_967D_640B65A380E3);
-const CHEWING_ZH_CN_PROFILE_GUID: GUID = GUID::from_u128(0x9063E7CC_225E_4CEA_B7A1_2B0FB12A75CF);
-const CHEWING_TIP_DESC: PCWSTR =
-    w!("0x0404:{13F2EF08-575C-4D8C-88E0-F67BB8052B84}{CE45F71D-CE79-41D1-967D-640B65A380E3}");
+const CJLEARN_TSF_CLSID: GUID = GUID::from_u128(0x979B58A7_ADE5_4333_8493_CA1294B5E806);
+const CJLEARN_ZH_TW_PROFILE_GUID: GUID = GUID::from_u128(0xC68442D3_78AF_4E6B_8650_8F799C9FF7ED);
+const CJLEARN_TIP_DESC: PCWSTR =
+    w!("0x0404:{979B58A7-ADE5-4333-8493-CA1294B5E806}{C68442D3-78AF-4E6B-8650-8F799C9FF7ED}");
 
 const CATEGORIES: [GUID; 7] = [
     GUID_TFCAT_TIP_KEYBOARD,
@@ -45,7 +45,7 @@ const CATEGORIES: [GUID; 7] = [
 ];
 
 fn register(icon_path: &OsStr) -> Result<()> {
-    println!("註冊新酷音輸入法");
+    println!("註冊倉頡學習版");
     unsafe {
         let input_processor_profile_mgr: ITfInputProcessorProfileMgr =
             CoCreateInstance(&CLSID_TF_InputProcessorProfiles, None, CLSCTX_INPROC_SERVER)?;
@@ -58,27 +58,10 @@ fn register(icon_path: &OsStr) -> Result<()> {
             lcid = 0x404;
         }
         input_processor_profile_mgr.RegisterProfile(
-            &CHEWING_TSF_CLSID,
+            &CJLEARN_TSF_CLSID,
             lcid as u16,
-            &CHEWING_ZH_TW_PROFILE_GUID,
-            w!("新酷音輸入法").as_wide(),
-            &pw_icon_path,
-            0,
-            HKL::default(),
-            0,
-            false,
-            0,
-        )?;
-        // Register for zh_CN
-        let mut lcid = LocaleNameToLCID(w!("zh-CN"), 0);
-        if matches!(lcid, 0 | 0x0C00 | 0x1000) {
-            lcid = 0x804;
-        }
-        input_processor_profile_mgr.RegisterProfile(
-            &CHEWING_TSF_CLSID,
-            lcid as u16,
-            &CHEWING_ZH_CN_PROFILE_GUID,
-            w!("新酷音输入法").as_wide(),
+            &CJLEARN_ZH_TW_PROFILE_GUID,
+            w!("倉頡學習版").as_wide(),
             &pw_icon_path,
             0,
             HKL::default(),
@@ -90,7 +73,7 @@ fn register(icon_path: &OsStr) -> Result<()> {
         let category_manager: ITfCategoryMgr =
             CoCreateInstance(&CLSID_TF_CategoryMgr, None, CLSCTX_INPROC_SERVER)?;
         for tfcat in &CATEGORIES {
-            category_manager.RegisterCategory(&CHEWING_TSF_CLSID, tfcat, &CHEWING_TSF_CLSID)?;
+            category_manager.RegisterCategory(&CJLEARN_TSF_CLSID, tfcat, &CJLEARN_TSF_CLSID)?;
         }
     }
 
@@ -106,7 +89,7 @@ fn register(icon_path: &OsStr) -> Result<()> {
 }
 
 fn unregister() -> Result<()> {
-    println!("取消註冊新酷音輸入法");
+    println!("取消註冊倉頡學習版");
     unsafe {
         let input_processor_profile_mgr: ITfInputProcessorProfileMgr =
             CoCreateInstance(&CLSID_TF_InputProcessorProfiles, None, CLSCTX_INPROC_SERVER)?;
@@ -115,7 +98,7 @@ fn unregister() -> Result<()> {
             CoCreateInstance(&CLSID_TF_CategoryMgr, None, CLSCTX_INPROC_SERVER)?;
         for tfcat in &CATEGORIES {
             if let Err(error) =
-                category_manager.UnregisterCategory(&CHEWING_TSF_CLSID, tfcat, &CHEWING_TSF_CLSID)
+                category_manager.UnregisterCategory(&CJLEARN_TSF_CLSID, tfcat, &CJLEARN_TSF_CLSID)
             {
                 println!("Failed to unregister category {tfcat:?}: {error}");
             }
@@ -127,20 +110,9 @@ fn unregister() -> Result<()> {
             lcid = 0x404;
         }
         input_processor_profile_mgr.UnregisterProfile(
-            &CHEWING_TSF_CLSID,
+            &CJLEARN_TSF_CLSID,
             lcid as u16,
-            &CHEWING_ZH_TW_PROFILE_GUID,
-            0,
-        )?;
-        // Unregister zh_CN profile
-        let mut lcid = LocaleNameToLCID(w!("zh-CN"), 0);
-        if matches!(lcid, 0 | 0x0C00 | 0x1000) {
-            lcid = 0x804;
-        }
-        input_processor_profile_mgr.UnregisterProfile(
-            &CHEWING_TSF_CLSID,
-            lcid as u16,
-            &CHEWING_ZH_CN_PROFILE_GUID,
+            &CJLEARN_ZH_TW_PROFILE_GUID,
             0,
         )?;
     }
@@ -149,9 +121,9 @@ fn unregister() -> Result<()> {
 }
 
 fn enable() {
-    println!("啟用新酷音輸入法");
+    println!("啟用倉頡學習版");
     unsafe {
-        InstallLayoutOrTip(CHEWING_TIP_DESC.as_ptr(), ILOT_INSTALL);
+        InstallLayoutOrTip(CJLEARN_TIP_DESC.as_ptr(), ILOT_INSTALL);
     }
 }
 
@@ -163,7 +135,7 @@ fn disable() {
     // Ref: https://codeberg.org/chewing/windows-chewing-tsf/issues/553
     //
     // unsafe {
-    //     InstallLayoutOrTip(CHEWING_TIP_DESC.as_ptr(), ILOT_UNINSTALL);
+    //     InstallLayoutOrTip(CJLEARN_TIP_DESC.as_ptr(), ILOT_UNINSTALL);
     // }
 }
 

@@ -40,10 +40,10 @@ mod ui_elements;
 
 impl_context_error!(TipError);
 
-const CHEWING_TSF_CLSID: GUID = GUID::from_u128(0x13F2EF08_575C_4D8C_88E0_F67BB8052B84);
-const GUID_INPUT_DISPLAY_ATTRIBUTE_1: GUID = GUID::from_u128(0xEEA32958_DC57_4542_9FC833C74F5CAAA9);
+const CHEWING_TSF_CLSID: GUID = GUID::from_u128(0x979B58A7_ADE5_4333_8493_CA1294B5E806);
+const GUID_INPUT_DISPLAY_ATTRIBUTE_1: GUID = GUID::from_u128(0x7EE421A2_14B4_442D_8AB0_DF2D47D0E7BB);
 const GUID_INPUT_DISPLAY_ATTRIBUTE_2: GUID =
-    GUID::from_u128(0x211F1E9E_8C3F_437A_B25E_C83F627468DB);
+    GUID::from_u128(0x4348572A_D525_4609_AA33_74DA1F2FF211);
 
 #[derive(Debug, Copy, Clone)]
 #[repr(C)]
@@ -53,7 +53,7 @@ pub(super) enum CommandType {
     Menu,
 }
 
-#[interface("f320f835-b95d-4d3f-89d5-fd4ab7b9d7bb")]
+#[interface("2FDB02C5-42F7-4068-BFAD-9B12D314A02F")]
 pub(super) unsafe trait IFnRunCommand: IUnknown {
     fn on_command(&self, id: u32, cmd_type: CommandType);
 }

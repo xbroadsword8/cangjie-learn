@@ -676,7 +676,7 @@ impl ITfUIElement_Impl for CandidateList_Impl {
     }
 
     fn GetGUID(&self) -> WindowsResult<GUID> {
-        Ok(GUID::from_u128(0x4b7f55c3_2ae5_4077_a1c0_d17c5cb3c88a))
+        Ok(GUID::from_u128(0x8F8BA48D_1C00_41AC_8C94_1CAAA4B1F4D8))
     }
 
     fn Show(&self, show: BOOL) -> WindowsResult<()> {

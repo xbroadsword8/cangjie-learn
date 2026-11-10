@@ -6,6 +6,7 @@ license = "GPL-3.0-or-later"
 build = "build.rs"
 
 [lib]
+name = "cjlearn_tip"
 crate-type = ["cdylib"]
 
 [dependencies]
