@@ -1,6 +1,6 @@
 ﻿# 在互動桌面跑：Word 開兩份文件，反覆「打字→貼圖→打字→切文件打字」，用 COM 讀回確認字有沒有進去。
 # wordtest.ps1 -Name <紀錄名> -Keys <打一個「我」的按鍵，如 'h,q,i,space' 或 'j,i,3,return'> -Rounds 20 [-Ruler]
-param($Name = 'test', $Keys = 'h,q,i,space', $Rounds = 20, [switch]$Ruler)
+param($Name = 'test', $Keys = 'h,q,i,space', $Rounds = 20, [switch]$Ruler, $Tip = '')   # -Tip '{CLSID}{PROFILE}'：先把整個工作階段切到這個輸入法
 $Out = "$env:USERPROFILE\cjtest\$Name.log"
 Remove-Item $Out -EA SilentlyContinue
 function Log($m) { "$(Get-Date -Format HH:mm:ss.fff) $m" | Out-File $Out -Append -Encoding utf8 }
@@ -86,6 +86,17 @@ try {
   $w1.DisplayRulers = $true; $w1.WindowState = 1   # 最大化，尺規位置固定
   Start-Sleep 2
   Focus $w1
+  if ($Tip) {
+    Add-Type @'
+using System; using System.Runtime.InteropServices;
+[ComImport, Guid("71C6E74C-0F28-11D8-A82A-00065B84435C"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+public interface ITfInputProcessorProfileMgr { [PreserveSig] int ActivateProfile(uint type, ushort langid, ref Guid clsid, ref Guid profile, IntPtr hkl, uint flags); }
+public static class TipW { public static int Activate(string clsid, string profile) {
+  var m = (ITfInputProcessorProfileMgr)Activator.CreateInstance(Type.GetTypeFromCLSID(new Guid("33C53A50-F456-4884-B049-85FD643ECFED")));
+  Guid c = new Guid(clsid), p = new Guid(profile); return m.ActivateProfile(1, 0x0404, ref c, ref p, IntPtr.Zero, 0x20000001); } }
+'@
+    $g = $Tip -split '}{'; $hr = [TipW]::Activate($g[0] + '}', '{' + $g[1]); Log ("切輸入法 hr=0x{0:X}" -f $hr); Start-Sleep 1
+  }
   $okCount = 0; $fail = 0
   if (-not (TypeCheck $d1 'r0 暖身')) { Log '暖身就失敗：輸入法沒切到或按鍵沒送到'; }
   for ($r = 1; $r -le $Rounds; $r++) {

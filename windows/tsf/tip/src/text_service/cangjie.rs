@@ -96,31 +96,69 @@ static SETTINGS: LazyLock<Mutex<Settings>> =
     LazyLock::new(|| Mutex::new(settings::load(settings_file())));
 
 /// 學習資料位置沿用 PIME 版：%APPDATA%\PIME\cjlearn（user.db、settings.json、sync\）。
+/// DLL 旁有 data_dir.txt 時改用它寫的資料夾（可含 %VAR%），測試時用來隔開真正的學習資料與同步。
 fn data_dir() -> PathBuf {
-    let base = std::env::var_os("APPDATA")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("USERPROFILE")
-                .map(|p| PathBuf::from(p).join("AppData").join("Roaming"))
-        })
-        .unwrap_or_else(std::env::temp_dir);
-    base.join("PIME").join("cjlearn")
+    static DIR: LazyLock<PathBuf> = LazyLock::new(|| {
+        if let Some(p) = dll_dir()
+            .and_then(|d| std::fs::read_to_string(d.join("data_dir.txt")).ok())
+            .map(|s| expand_env(s.trim().trim_start_matches('\u{feff}')))
+            .filter(|s| !s.is_empty())
+        {
+            return PathBuf::from(p);
+        }
+        let base = std::env::var_os("APPDATA")
+            .map(PathBuf::from)
+            .or_else(|| {
+                std::env::var_os("USERPROFILE")
+                    .map(|p| PathBuf::from(p).join("AppData").join("Roaming"))
+            })
+            .unwrap_or_else(std::env::temp_dir);
+        base.join("PIME").join("cjlearn")
+    });
+    DIR.clone()
+}
+
+/// 把 %VAR% 換成環境變數值（找不到的照原樣留著）。
+fn expand_env(s: &str) -> String {
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find('%') {
+        out.push_str(&rest[..i]);
+        let after = &rest[i + 1..];
+        match after.find('%') {
+            Some(j) => {
+                let name = &after[..j];
+                match std::env::var(name) {
+                    Ok(v) if !name.is_empty() => out.push_str(&v),
+                    _ => { out.push('%'); out.push_str(name); out.push('%'); }
+                }
+                rest = &after[j + 1..];
+            }
+            None => { out.push('%'); rest = after; }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 fn settings_file() -> PathBuf {
     data_dir().join("settings.json")
 }
 
-/// model.db 放在這支 DLL 旁邊。
-fn model_db_path() -> Option<PathBuf> {
+/// 這支 DLL 所在的資料夾。
+fn dll_dir() -> Option<PathBuf> {
     let mut buf = [0u16; 1024];
     let hmodule = HMODULE(G_HINSTANCE.load(Ordering::Relaxed) as *mut c_void);
     let len = unsafe { GetModuleFileNameW(Some(hmodule), &mut buf) } as usize;
     if len == 0 || len >= buf.len() {
         return None;
     }
-    let dll = PathBuf::from(String::from_utf16_lossy(&buf[..len]));
-    Some(dll.parent()?.join("model.db"))
+    Some(PathBuf::from(String::from_utf16_lossy(&buf[..len])).parent()?.to_path_buf())
+}
+
+/// model.db 放在這支 DLL 旁邊。
+fn model_db_path() -> Option<PathBuf> {
+    Some(dll_dir()?.join("model.db"))
 }
 
 /// 取得（必要時開啟）共用 Model，順便檢查同步資料夾有沒有更新。

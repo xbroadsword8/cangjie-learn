@@ -60,6 +60,7 @@ public static class Tip {
 $script:TIPS = @{
   chewing = @('{13F2EF08-575C-4D8C-88E0-F67BB8052B84}', '{CE45F71D-CE79-41D1-967D-640B65A380E3}', 'j i 3 return')
   cjlearn = @('{35F67E9D-A54D-4177-9697-8B0AB71A9E04}', '{42D1BA3B-DC86-44CE-AA0B-29BE3392897F}', 'h q i space')
+  cjtsf   = @('{979B58A7-ADE5-4333-8493-CA1294B5E806}', '{C68442D3-78AF-4E6B-8650-8F799C9FF7ED}', 'h q i space')
 }
 # 切到指定輸入法並在目前游標處打一個「我」確認，確認後刪掉；回傳是否成功
 function UseTip($name, $getText) {

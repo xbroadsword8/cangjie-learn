@@ -22,7 +22,7 @@ cp "$ROOT/data/model.db" "$OUT/"
 printf '\xef\xbb\xbf' | cat - "$ROOT/windows/tsfdev/devinstall.ps1" > "$OUT/devinstall.ps1"
 ls -la "$OUT" "$OUT/x64" "$OUT/x86"
 if [ -n "${DEPLOY:-}" ]; then
-  ssh "$DEPLOY" 'powershell -NoProfile -Command "Remove-Item -Recurse -Force $env:USERPROFILE\cjtsf -EA SilentlyContinue"'
+  ssh "$DEPLOY" 'powershell -NoProfile -Command "Remove-Item -Recurse -Force $env:USERPROFILE\cjtsf -EA SilentlyContinue; exit 0"'
   scp -rq "$OUT" "$DEPLOY:cjtsf"
-  ssh "$DEPLOY" 'powershell -NoProfile -ExecutionPolicy Bypass -Command "& $env:USERPROFILE\cjtsf\devinstall.ps1 -Src $env:USERPROFILE\cjtsf"'
+  ssh "$DEPLOY" 'powershell -NoProfile -ExecutionPolicy Bypass -Command "& $env:USERPROFILE\cjtsf\devinstall.ps1 -Src $env:USERPROFILE\cjtsf ${DEVARGS:-}"'
 fi

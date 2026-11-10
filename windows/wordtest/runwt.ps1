@@ -1,9 +1,11 @@
 ﻿# 在已登入的桌面跑 wordtest.ps1 並等它結束：runwt.ps1 <紀錄名> <按鍵> <回合> [ruler]
 param($Name, $Keys, $Rounds = 20, $Mode = '', $Max = 900)
-$script = "$env:USERPROFILE\cjtest\$(if ($Name -match "^(dumpui|probe3|probe|snip)") { "$($Matches[1]).ps1" } elseif ($Name -match "^retype") { "retype.ps1" } else { "wordtest.ps1" })"
+$script = "$env:USERPROFILE\cjtest\$(if ($Name -match "^(dumpui|probe3|probe|snip|tsfsmoke)") { "$($Matches[1]).ps1" } elseif ($Name -match "^retype") { "retype.ps1" } else { "wordtest.ps1" })"
 $arg = "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File `"$script`" -Name $Name -Keys $Keys -Rounds $Rounds"
 if ($Mode -eq 'ruler') { $arg += ' -Ruler' }
+if ($Name -match 'tsf') { $arg += ' -Tip {979B58A7-ADE5-4333-8493-CA1294B5E806}{C68442D3-78AF-4E6B-8650-8F799C9FF7ED}' }
 if ($Name -match '^snip') { $arg = "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File `"$script`" -Name $Name -Rounds $Rounds -Tip $(if ($Name -match 'pime') { 'cjlearn' } else { 'chewing' })" }
+if ($Name -match '^tsfsmoke') { $arg = "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File `"$script`" -Name $Name -Tip $Keys" }
 if ($Name -match '^retype') { $arg = "-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File `"$script`" -Name $Name -Limit $Rounds" }
 $a = New-ScheduledTaskAction -Execute powershell.exe -Argument $arg
 $p = New-ScheduledTaskPrincipal -UserId ((Get-CimInstance Win32_ComputerSystem).UserName) -LogonType Interactive -RunLevel Limited
