@@ -188,8 +188,8 @@ impl Composer {
             }
         }
 
-        if self.full_punct && full_punct_key(key) {
-            let out = self.flush() + cjk_punct(key).unwrap();
+        if let Some(p) = cjk_punct(key).filter(|_| self.full_punct && full_punct_key(key)) {
+            let out = self.flush() + p;
             self.ctx.clear();
             return res(true, out);
         }

@@ -98,14 +98,21 @@ impl Model {
         s
     }
 
+    /// 查 (code, ch)；資料庫出錯回空清單。DLL 跑在 Word 等宿主程式裡，panic=abort 會把宿主一起帶掛。
+    fn rows(&self, sql: &str, args: &[&str]) -> Vec<(String, String)> {
+        let Ok(mut st) = self.db.prepare(sql) else { return vec![] };
+        let out = match st.query_map(rusqlite::params_from_iter(args.iter()), |r| Ok((r.get(0)?, r.get(1)?))) {
+            Ok(it) => it.filter_map(Result::ok).collect(),
+            Err(_) => vec![],
+        };
+        out
+    }
+
     /// 完整碼命中的字排前面；其後是以 code 為前綴的補完字。兩組各自依分數排序（穩定）。
     pub fn candidates(&mut self, code: &str, ctx: &str) -> Vec<Candidate> {
         if code.is_empty() { return vec![]; }
         let ctx = tail_chars(ctx, CTX_LEN).to_string();
-        let rows: Vec<(String, String)> = {
-            let mut st = self.db.prepare("select code, ch from code where code=? order by rank").unwrap();
-            st.query_map([code], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().filter_map(Result::ok).collect()
-        };
+        let rows = self.rows("select code, ch from code where code=? order by rank", &[code]);
         let mut exact: Vec<Candidate> = rows
             .into_iter()
             .map(|(c, ch)| { let score = self.score(&ch, &ctx); Candidate { ch, code: c, exact: true, score } })
@@ -113,13 +120,8 @@ impl Model {
         exact.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         let mut seen: std::collections::HashSet<String> = exact.iter().map(|c| c.ch.clone()).collect();
         let hi = format!("{}{{", code);
-        let rows: Vec<(String, String)> = {
-            let mut st = self
-                .db
-                .prepare("select code, ch from code where code > ? and code < ? order by length(code), rank")
-                .unwrap();
-            st.query_map([code, hi.as_str()], |r| Ok((r.get(0)?, r.get(1)?))).unwrap().filter_map(Result::ok).collect()
-        };
+        let rows = self.rows("select code, ch from code where code > ? and code < ? order by length(code), rank",
+                             &[code, hi.as_str()]);
         let mut comp = Vec::new();
         for (c, ch) in rows {
             if seen.insert(ch.clone()) {

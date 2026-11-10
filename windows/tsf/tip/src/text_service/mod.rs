@@ -19,15 +19,14 @@ use windows_core::{
 
 use crate::{
     quirk::{FpGuard, Quirk},
-    text_service::chewing::ReentrantOps,
     w32::imm32::{ImeDpi, patch_ime_info, release_ime_info},
 };
 
-use self::chewing::ChewingTextService;
+use self::cangjie::CangjieTextService;
 use self::display_attribute::{EnumTfDisplayAttributeInfo, get_display_attribute_info};
 use self::key_event::SystemKeyboardEvent;
 
-mod chewing;
+mod cangjie;
 mod display_attribute;
 mod edit_session;
 mod icons;
@@ -35,12 +34,11 @@ mod key_event;
 mod lang_bar;
 mod menu;
 mod resources;
-mod theme;
 mod ui_elements;
 
 impl_context_error!(TipError);
 
-const CHEWING_TSF_CLSID: GUID = GUID::from_u128(0x979B58A7_ADE5_4333_8493_CA1294B5E806);
+pub(crate) const CLSID_TEXT_SERVICE: GUID = GUID::from_u128(0x979B58A7_ADE5_4333_8493_CA1294B5E806);
 const GUID_INPUT_DISPLAY_ATTRIBUTE_1: GUID = GUID::from_u128(0x7EE421A2_14B4_442D_8AB0_DF2D47D0E7BB);
 const GUID_INPUT_DISPLAY_ATTRIBUTE_2: GUID =
     GUID::from_u128(0x4348572A_D525_4609_AA33_74DA1F2FF211);
@@ -70,7 +68,7 @@ pub(super) unsafe trait IFnRunCommand: IUnknown {
     ITfThreadFocusSink
 )]
 pub(super) struct TextService {
-    inner: RefCell<Option<ChewingTextService>>,
+    inner: RefCell<Option<CangjieTextService>>,
     tid: Cell<u32>,
     thread_cookies: RefCell<Vec<u32>>,
     keyboard_openclose_cookie: Cell<u32>,
@@ -130,7 +128,7 @@ impl ITfFunctionProvider_Impl for TextService_Impl {
     }
 
     fn GetDescription(&self) -> Result<BSTR> {
-        Ok(BSTR::from("Chewing TSF Function Provider"))
+        Ok(BSTR::from("Cangjie Learn TSF Function Provider"))
     }
 
     fn GetFunction(&self, _rguid: *const GUID, riid: *const GUID) -> Result<IUnknown> {
@@ -149,17 +147,13 @@ impl IFnRunCommand_Impl for TextService_Impl {
             return;
         };
         ts.on_command(id, cmd_type);
-        let reentrant_ops = ReentrantOps::from_mut(&self.inner, borrowed_ts);
-        if let Err(error) = reentrant_ops.sync_keyboard_openclose(false) {
-            error!("Unable to sync lang mode: {error:#}");
-        }
     }
 }
 
 impl ITfTextInputProcessor_Impl for TextService_Impl {
     fn Activate(&self, ptim: Ref<ITfThreadMgr>, tid: u32) -> Result<()> {
         let _fp = FpGuard::enter();
-        let res = expect_error::<(), TipError>("Failed to activate chewing_tip", || {
+        let res = expect_error::<(), TipError>("Failed to activate cjlearn_tip", || {
             debug!(tid; "tip::activate");
 
             if matches!(
@@ -185,7 +179,7 @@ impl ITfTextInputProcessor_Impl for TextService_Impl {
             let thread_mgr = ptim.ok()?;
             let composition_sink: InterfaceRef<ITfCompositionSink> = self.as_interface_ref();
             let cts =
-                ChewingTextService::new(thread_mgr.clone(), tid, composition_sink.cast_object()?)?;
+                CangjieTextService::new(thread_mgr.clone(), tid, composition_sink.cast_object()?)?;
             ts.replace(cts);
 
             let punk: InterfaceRef<IUnknown> = self.as_interface_ref();
@@ -229,7 +223,7 @@ impl ITfTextInputProcessor_Impl for TextService_Impl {
 
     fn Deactivate(&self) -> Result<()> {
         let _fp = FpGuard::enter();
-        let res = expect_error::<(), TipError>("Failed to deactivate chewing_tip", || {
+        let res = expect_error::<(), TipError>("Failed to deactivate cjlearn_tip", || {
             debug!("tip::deactivate");
             if !self.pimedpi.get().is_null() {
                 debug!("releasing previously acquired PIMEDPI pointer");
@@ -338,11 +332,6 @@ impl ITfThreadFocusSink_Impl for TextService_Impl {
             error!("Unable to handle focus: {error:#}");
             return Err(E_UNEXPECTED.into());
         }
-        let reentrant_ops = ReentrantOps::from_mut(&self.inner, borrowed_ts);
-        if let Err(error) = reentrant_ops.sync_keyboard_openclose(false) {
-            error!("Unable to sync lang mode: {error:#}");
-            return Err(E_UNEXPECTED.into());
-        }
         Ok(())
     }
     fn OnKillThreadFocus(&self) -> Result<()> {
@@ -365,7 +354,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             let Some(ts) = borrowed_ts.as_mut() else {
                 return Ok(FALSE);
             };
-            let ev = SystemKeyboardEvent::new(wparam.0 as u16, lparam.0);
+            let ev = SystemKeyboardEvent::new(wparam.0 as u16);
             match ts.on_test_keydown(pic.ok()?, ev) {
                 Ok(v) => v,
                 Err(error) => {
@@ -386,20 +375,14 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             let Some(ts) = borrowed_ts.as_mut() else {
                 return Ok(FALSE);
             };
-            let ev = SystemKeyboardEvent::new(wparam.0 as u16, lparam.0);
-            let should_handle = match ts.on_test_keyup(pic.ok()?, ev) {
+            let ev = SystemKeyboardEvent::new(wparam.0 as u16);
+            match ts.on_test_keyup(pic.ok()?, ev) {
                 Ok(v) => v,
                 Err(error) => {
                     error!("Unable to handle OnTestKeyUp: {error:#}");
                     return Err(E_UNEXPECTED.into());
                 }
-            };
-            let reentrant_ops = ReentrantOps::from_mut(&self.inner, borrowed_ts);
-            if let Err(error) = reentrant_ops.sync_keyboard_openclose(false) {
-                error!("Unable to sync lang mode: {error:#}");
-                return Err(E_UNEXPECTED.into());
             }
-            should_handle
         };
         self.tail_handler();
         Ok(should_handle.into())
@@ -414,7 +397,7 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             let Some(ts) = borrowed_ts.as_mut() else {
                 return Ok(FALSE);
             };
-            let ev = SystemKeyboardEvent::new(wparam.0 as u16, lparam.0);
+            let ev = SystemKeyboardEvent::new(wparam.0 as u16);
             match ts.on_keydown(pic.ok()?, ev) {
                 Ok(v) => v,
                 Err(error) => {
@@ -436,20 +419,14 @@ impl ITfKeyEventSink_Impl for TextService_Impl {
             let Some(ts) = borrowed_ts.as_mut() else {
                 return Ok(FALSE);
             };
-            let ev = SystemKeyboardEvent::new(wparam.0 as u16, lparam.0);
-            let handled = match ts.on_keyup(pic.ok()?, ev) {
+            let ev = SystemKeyboardEvent::new(wparam.0 as u16);
+            match ts.on_keyup(pic.ok()?, ev) {
                 Ok(v) => v,
                 Err(error) => {
                     error!("Unable to handle OnKeyUp: {error:#}");
                     return Err(E_UNEXPECTED.into());
                 }
-            };
-            let reentrant_ops = ReentrantOps::from_mut(&self.inner, borrowed_ts);
-            if let Err(error) = reentrant_ops.sync_keyboard_openclose(false) {
-                error!("Unable to sync lang mode: {error:#}");
-                return Err(E_UNEXPECTED.into());
             }
-            handled
         };
         self.tail_handler();
         Ok(handled.into())
@@ -497,41 +474,17 @@ impl ITfCompartmentEventSink_Impl for TextService_Impl {
         let _fp = FpGuard::enter();
         if let Some(rguid) = unsafe { rguid.as_ref() } {
             debug!(rguid:?; "compartment::on_change");
-            if self
-                .inner
-                .borrow()
-                .as_ref()
-                .is_some_and(|ts| ts.should_sync_keyboard_openclose())
-            {
-                let borrowed_ts = self.inner.borrow();
-                let Some(ts) = borrowed_ts.as_ref() else {
-                    error!("text_service is not initialized");
-                    return Ok(());
-                };
-                if let Err(error) = ts.on_compartment_change_ro(rguid) {
-                    error!("Unable to handle compartment change: {error:#}");
-                    return Err(E_UNEXPECTED.into());
-                }
-                if rguid == &GUID_COMPARTMENT_KEYBOARD_OPENCLOSE {
-                    let reentrant_ops = ReentrantOps::from_ref(&self.inner, borrowed_ts);
-                    if let Err(error) = reentrant_ops.sync_keyboard_openclose(true) {
-                        error!("Unable to sync lang mode: {error:#}");
-                        return Err(E_UNEXPECTED.into());
-                    }
-                }
-            } else {
-                let Ok(mut borrowed_ts) = self.inner.try_borrow_mut() else {
-                    debug!("reentrent detected - abort compartment::on_change");
-                    return Ok(());
-                };
-                let Some(ts) = borrowed_ts.as_mut() else {
-                    error!("text_service is not initialized");
-                    return Ok(());
-                };
-                if let Err(error) = ts.on_compartment_change(rguid) {
-                    error!("Unable to handle compartment change: {error:#}");
-                    return Err(E_UNEXPECTED.into());
-                }
+            let Ok(mut borrowed_ts) = self.inner.try_borrow_mut() else {
+                debug!("reentrent detected - abort compartment::on_change");
+                return Ok(());
+            };
+            let Some(ts) = borrowed_ts.as_mut() else {
+                error!("text_service is not initialized");
+                return Ok(());
+            };
+            if let Err(error) = ts.on_compartment_change(rguid) {
+                error!("Unable to handle compartment change: {error:#}");
+                return Err(E_UNEXPECTED.into());
             }
         }
         Ok(())

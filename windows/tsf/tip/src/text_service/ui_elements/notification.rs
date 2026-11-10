@@ -167,7 +167,7 @@ impl View {
             let window = Window::new();
             window.create(
                 parent,
-                w!("ChewingNotificationWindow"),
+                w!("CangjieLearnNotificationWindow"),
                 WS_POPUP | WS_CLIPCHILDREN,
                 WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
                 user_data.into_raw().cast(),
@@ -354,7 +354,7 @@ impl Notification {
             hInstance: hinst,
             hCursor: unsafe { LoadCursorW(None, IDC_ARROW).unwrap_or_default() },
             lpszMenuName: PCWSTR::null(),
-            lpszClassName: w!("ChewingNotificationWindow"),
+            lpszClassName: w!("CangjieLearnNotificationWindow"),
             ..Default::default()
         };
         unsafe { RegisterClassExW(&wc) };

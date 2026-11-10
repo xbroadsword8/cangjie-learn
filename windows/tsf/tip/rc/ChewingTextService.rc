@@ -54,21 +54,8 @@ END
 // remains consistent on all systems.
 101                     ICON                    "mainicon.ico"
 102                     ICON                    "mainicon2.ico"
-IDI_CHI                 ICON                    "chi.ico"
-IDI_CHI_DARK            ICON                    "chi_dark.ico"
-IDI_CONFIG              ICON                    "config.ico"
-IDI_ENG                 ICON                    "eng.ico"
-IDI_ENG_DARK            ICON                    "eng_dark.ico"
-IDI_SIMP                ICON                    "simp.ico"
-IDI_SIMP_DARK           ICON                    "simp_dark.ico"
-IDI_CHI_DOT             ICON                    "chi_dot.ico"
-IDI_CHI_DARK_DOT        ICON                    "chi_dark_dot.ico"
-IDI_ENG_DOT             ICON                    "eng_dot.ico"
-IDI_ENG_DARK_DOT        ICON                    "eng_dark_dot.ico"
-IDI_SIMP_DOT            ICON                    "simp_dot.ico"
-IDI_SIMP_DARK_DOT       ICON                    "simp_dark_dot.ico"
-IDI_FULL_SHAPE          ICON                    "full.ico"
-IDI_HALF_SHAPE          ICON                    "half.ico"
+IDI_CHI                 ICON                    "cjlearn_chi.ico"
+IDI_ENG                 ICON                    "cjlearn_eng.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -92,13 +79,13 @@ BEGIN
     BEGIN
         BLOCK "040404b0"
         BEGIN
-            VALUE "CompanyName", "Chewing"
-            VALUE "FileDescription", "新酷音輸入法"
+            VALUE "CompanyName", "cjlearn"
+            VALUE "FileDescription", "倉頡學習版"
             VALUE "FileVersion", VER_FILEVERSION_STR
-            VALUE "InternalName", "ChewingTextService.dll"
-            VALUE "LegalCopyright", "Copyright (C) 2013-2025"
-            VALUE "OriginalFilename", "ChewingTextService.dll"
-            VALUE "ProductName", "新酷音輸入法"
+            VALUE "InternalName", "cjlearn_tip.dll"
+            VALUE "LegalCopyright", "Copyright (C) 2013-2026 (windows-chewing-tsf, GPL-3.0-or-later)"
+            VALUE "OriginalFilename", "cjlearn_tip.dll"
+            VALUE "ProductName", "倉頡學習版"
             VALUE "ProductVersion", VER_PRODUCTVERSION_STR
         END
     END
@@ -118,29 +105,8 @@ IDR_MENU MENU
 BEGIN
     POPUP "POPUP"
     BEGIN
-        MENUITEM "有新版本可以下載(&U)",                ID_CHECK_NEW_VER
-        MENUITEM "關於新酷音輸入法(&A)",                ID_ABOUT
-        MENUITEM "參觀新酷音官方網站(&W)",               ID_WEBSITE
-        MENUITEM "新酷音線上討論區(&G)",                ID_GROUP
-        MENUITEM SEPARATOR
-        MENUITEM "軟體本身的建議及錯誤回報(&B)",            ID_BUGREPORT
-        MENUITEM "注音及選字選詞錯誤回報 (&P)",            ID_DICT_BUGREPORT
-        MENUITEM SEPARATOR
-        MENUITEM "新酷音使用說明 (&H)",                ID_CHEWING_HELP
-        MENUITEM "編輯使用者詞庫 (&E)",                 ID_HASHED
-        MENUITEM "設定新酷音輸入法(&C)",                ID_CONFIG
-        MENUITEM SEPARATOR
-        POPUP "網路辭典 (&D)"
-        BEGIN
-            MENUITEM "萌典 (moedict)",                ID_MOEDICT
-            MENUITEM SEPARATOR
-            MENUITEM "教育部國語辭典",                     ID_DICT
-            MENUITEM "教育部國語辭典簡編本",                  ID_SIMPDICT
-            MENUITEM "教育部國語小字典",                    ID_LITTLEDICT
-            MENUITEM "教育部成語典",                      ID_PROVERBDICT
-        END
-        MENUITEM "輸出全形英數字母 (&F)",             ID_SWITCH_SHAPE
-        MENUITEM "輸出簡體中文 (&S)",                 ID_OUTPUT_SIMP_CHINESE
+        MENUITEM "打錯碼按空白清掉",                   ID_CLEAR_ON_ERROR
+        MENUITEM "標點直接出全形（，。？！）",             ID_FULL_PUNCT
     END
 END
 
@@ -152,11 +118,8 @@ END
 
 STRINGTABLE
 BEGIN
-    IDS_CHEWING             "新酷音輸入法"
-    IDS_SWITCH_SHAPE        "全形/半形切換"
-    IDS_SWITCH_LANG         "中文/英文切換"
-    IDS_SETTINGS            "設定/工具選單"
-    IDS_CONFIG_TITLE        "設定新酷音輸入法"
+    IDS_CHEWING             "倉頡學習版"
+    IDS_SWITCH_LANG         "中文/英文切換（單按 Shift）"
 END
 
 #endif    // Chinese (Traditional, Taiwan) resources

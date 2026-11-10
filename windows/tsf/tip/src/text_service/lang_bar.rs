@@ -29,9 +29,7 @@ use windows_core::{
     implement,
 };
 
-use crate::text_service::chewing::CLSID_TEXT_SERVICE;
-
-use super::CHEWING_TSF_CLSID;
+use super::CLSID_TEXT_SERVICE;
 use super::{CommandType, IFnRunCommand};
 
 #[implement(ITfLangBarItem, ITfLangBarItemButton, ITfSource)]
@@ -139,7 +137,7 @@ impl ITfLangBarItemButton_Impl for LangBarButton_Impl {
             CommandType::LeftClick
         };
         unsafe {
-            if let Ok(fn_provider) = self.thread_mgr.GetFunctionProvider(&CHEWING_TSF_CLSID)
+            if let Ok(fn_provider) = self.thread_mgr.GetFunctionProvider(&CLSID_TEXT_SERVICE)
                 && let Ok(punk) = fn_provider.GetFunction(&GUID::zeroed(), &IFnRunCommand::IID)
             {
                 let cb: IFnRunCommand = punk.cast()?;
@@ -161,7 +159,7 @@ impl ITfLangBarItemButton_Impl for LangBarButton_Impl {
 
     fn OnMenuSelect(&self, wid: u32) -> Result<()> {
         unsafe {
-            if let Ok(fn_provider) = self.thread_mgr.GetFunctionProvider(&CHEWING_TSF_CLSID)
+            if let Ok(fn_provider) = self.thread_mgr.GetFunctionProvider(&CLSID_TEXT_SERVICE)
                 && let Ok(punk) = fn_provider.GetFunction(&GUID::zeroed(), &IFnRunCommand::IID)
             {
                 let cb: IFnRunCommand = punk.cast()?;

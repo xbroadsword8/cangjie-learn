@@ -11,7 +11,10 @@ use windows::Win32::System::{
     Com::{CoLockObjectExternal, IClassFactory, IClassFactory_Impl},
     Console::{ATTACH_PARENT_PROCESS, AttachConsole},
 };
-use windows::Win32::{Foundation::TRUE, System::SystemServices::DLL_PROCESS_ATTACH};
+use windows::Win32::{
+    Foundation::{S_FALSE, TRUE},
+    System::SystemServices::DLL_PROCESS_ATTACH,
+};
 use windows::core::{
     BOOL, ComObjectInner, ComObjectInterface, GUID, HRESULT, IUnknown, Interface, Ref, Result,
     implement,
@@ -50,10 +53,16 @@ extern "system" fn DllMain(
                     })
                     .apply();
             }
-            log::info!("chewing_tip.dll loaded");
+            log::info!("cjlearn_tip.dll loaded");
         }
     }
     TRUE.0
+}
+
+/// 輸入法 DLL 載入後不卸載（TSF 可能還持有物件），一律回 S_FALSE。
+#[unsafe(no_mangle)]
+extern "system" fn DllCanUnloadNow() -> HRESULT {
+    S_FALSE
 }
 
 #[unsafe(no_mangle)]

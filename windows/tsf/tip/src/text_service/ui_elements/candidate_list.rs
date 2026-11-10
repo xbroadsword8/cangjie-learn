@@ -8,7 +8,6 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use chewing::input::keysym::{Keysym, SYM_DOWN, SYM_LEFT, SYM_RETURN, SYM_RIGHT, SYM_UP};
 use log::{debug, error};
 use scoped_error::expect_error;
 use windows::Win32::{
@@ -79,6 +78,8 @@ struct CandidateListInner {
 #[derive(Default)]
 pub(crate) struct Model {
     pub(crate) items: Vec<String>,
+    /// 每個候選字後面用淡色畫的「還沒打的字根」，與 items 一一對應（空字串＝沒有）。
+    pub(crate) hints: Vec<String>,
     pub(crate) selkeys: Vec<u16>,
     pub(crate) total_page: u32,
     pub(crate) current_page: u32,
@@ -92,13 +93,9 @@ pub(crate) struct Model {
     pub(crate) bg_color: D2D1_COLOR_F,
     pub(crate) highlight_fg_color: D2D1_COLOR_F,
     pub(crate) highlight_bg_color: D2D1_COLOR_F,
+    pub(crate) hint_color: D2D1_COLOR_F,
+    pub(crate) hint_highlight_color: D2D1_COLOR_F,
     pub(crate) border_color: D2D1_COLOR_F,
-}
-
-pub(crate) enum FilterKeyResult {
-    Handled,
-    HandledCommit,
-    NotHandled,
 }
 
 extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -178,7 +175,7 @@ impl View {
             let window = Window::new();
             window.create(
                 parent,
-                w!("ChewingCandidateListWindow"),
+                w!("CangjieLearnCandidateListWindow"),
                 WS_POPUP | WS_CLIPCHILDREN,
                 WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
                 user_data.into_raw().cast(),
@@ -210,6 +207,8 @@ impl View {
 
 const ROW_SPACING: f32 = 4.0;
 const COL_SPACING: f32 = 8.0;
+/// 候選字與灰色字根之間的間距
+const HINT_GAP: f32 = 6.0;
 
 impl View {
     fn window(&self) -> Option<&Window> {
@@ -252,7 +251,7 @@ impl View {
                 let mut text_width: f32 = 0.0;
                 let mut item_height: f32 = 0.0;
                 let mut selkey = "?.".to_string().encode_utf16().collect::<Vec<_>>();
-                for (key, text) in model.selkeys.iter().zip(model.items.iter()) {
+                for (i, (key, text)) in model.selkeys.iter().zip(model.items.iter()).enumerate() {
                     let mut selkey_metrics = DWRITE_TEXT_METRICS::default();
                     let mut item_metrics = DWRITE_TEXT_METRICS::default();
 
@@ -272,9 +271,25 @@ impl View {
                             .GetMetrics(&mut item_metrics)?;
                     }
 
+                    // 補完候選：字後面還要放灰色字根，寬度一起算
+                    let mut item_width = item_metrics.widthIncludingTrailingWhitespace;
+                    if let Some(hint) = model.hints.get(i).filter(|h| !h.is_empty()) {
+                        let mut hint_metrics = DWRITE_TEXT_METRICS::default();
+                        unsafe {
+                            dwrite_factory
+                                .CreateTextLayout(
+                                    &HSTRING::from(hint),
+                                    &text_format,
+                                    f32::MAX,
+                                    f32::MAX,
+                                )?
+                                .GetMetrics(&mut hint_metrics)?;
+                        }
+                        item_width += HINT_GAP + hint_metrics.widthIncludingTrailingWhitespace;
+                    }
                     selkey_width =
                         selkey_width.max(selkey_metrics.widthIncludingTrailingWhitespace);
-                    text_width = text_width.max(item_metrics.widthIncludingTrailingWhitespace);
+                    text_width = text_width.max(item_width);
                     item_height = item_height
                         .max(item_metrics.height)
                         .max(selkey_metrics.height);
@@ -427,6 +442,9 @@ impl View {
                         dc.CreateSolidColorBrush(&model.highlight_bg_color, None)?;
                     let selected_text_brush =
                         dc.CreateSolidColorBrush(&model.highlight_fg_color, None)?;
+                    let hint_brush = dc.CreateSolidColorBrush(&model.hint_color, None)?;
+                    let selected_hint_brush =
+                        dc.CreateSolidColorBrush(&model.hint_highlight_color, None)?;
 
                     dc.DrawText(
                         &page_number,
@@ -467,7 +485,20 @@ impl View {
                         if let Some(item) = model.items.get(i) {
                             let text = HSTRING::from(item);
 
-                            if model.use_cursor && i == model.current_sel {
+                            let selected = model.use_cursor && i == model.current_sel;
+                            // 灰色字根畫在候選字後面，起點要先量字寬
+                            let hint = model.hints.get(i).filter(|h| !h.is_empty());
+                            let hint_left = match hint {
+                                Some(_) => {
+                                    let mut m = DWRITE_TEXT_METRICS::default();
+                                    dwrite_factory
+                                        .CreateTextLayout(&text, &text_format, f32::MAX, f32::MAX)?
+                                        .GetMetrics(&mut m)?;
+                                    Some(text_rect.left + m.widthIncludingTrailingWhitespace + HINT_GAP)
+                                }
+                                None => None,
+                            };
+                            if selected {
                                 dc.FillRectangle(&text_rect, &highlight_brush);
                                 dc.DrawText(
                                     &text,
@@ -483,6 +514,16 @@ impl View {
                                     &text_format,
                                     &text_rect,
                                     &text_brush,
+                                    D2D1_DRAW_TEXT_OPTIONS_NONE,
+                                    DWRITE_MEASURING_MODE_NATURAL,
+                                );
+                            }
+                            if let (Some(hint), Some(left)) = (hint, hint_left) {
+                                dc.DrawText(
+                                    &HSTRING::from(hint),
+                                    &text_format,
+                                    &D2D_RECT_F { left, ..text_rect },
+                                    if selected { &selected_hint_brush } else { &hint_brush },
                                     D2D1_DRAW_TEXT_OPTIONS_NONE,
                                     DWRITE_MEASURING_MODE_NATURAL,
                                 );
@@ -525,7 +566,7 @@ impl CandidateList {
             hInstance: hinst,
             hCursor: unsafe { LoadCursorW(None, IDC_ARROW).unwrap_or_default() },
             lpszMenuName: PCWSTR::null(),
-            lpszClassName: w!("ChewingCandidateListWindow"),
+            lpszClassName: w!("CangjieLearnCandidateListWindow"),
             ..Default::default()
         };
         unsafe { RegisterClassExW(&wc) };
@@ -581,75 +622,6 @@ impl CandidateList {
     pub(crate) fn set_model(&self, model: Model) {
         *self.inner.model.borrow_mut() = model;
         self.update_ui_element();
-    }
-    pub(crate) fn filter_key_event(&self, ksym: Keysym) -> FilterKeyResult {
-        let mut res = FilterKeyResult::NotHandled;
-        {
-            let mut model = self.inner.model.borrow_mut();
-            let old_sel = model.current_sel;
-            let uiless_mode = self.inner.view.borrow().window().is_none();
-            if uiless_mode {
-                match ksym {
-                    SYM_DOWN | SYM_RIGHT => {
-                        model.current_sel = model
-                            .current_sel
-                            .saturating_add(1)
-                            .clamp(0, model.items.len() - 1);
-                    }
-                    SYM_UP | SYM_LEFT => {
-                        model.current_sel = model.current_sel.saturating_sub(1);
-                    }
-                    SYM_RETURN => {
-                        res = FilterKeyResult::HandledCommit;
-                    }
-                    _ => res = FilterKeyResult::NotHandled,
-                }
-            } else {
-                let cand_per_row = model.cand_per_row as usize;
-                match ksym {
-                    SYM_UP => {
-                        if model.current_sel >= cand_per_row {
-                            model.current_sel -= cand_per_row;
-                        }
-                    }
-                    SYM_DOWN => {
-                        if model.current_sel + cand_per_row < model.items.len() {
-                            model.current_sel += cand_per_row;
-                        }
-                    }
-                    SYM_LEFT => {
-                        if cand_per_row > 1 {
-                            model.current_sel = model.current_sel.saturating_sub(1);
-                        }
-                    }
-                    SYM_RIGHT => {
-                        if cand_per_row > 1 {
-                            model.current_sel = model
-                                .current_sel
-                                .saturating_add(1)
-                                .clamp(0, model.items.len() - 1);
-                        }
-                    }
-                    SYM_RETURN => {
-                        res = FilterKeyResult::HandledCommit;
-                    }
-                    _ => res = FilterKeyResult::NotHandled,
-                }
-            }
-
-            if model.current_sel != old_sel {
-                res = FilterKeyResult::Handled;
-            }
-        }
-        self.update_ui_element();
-        res
-    }
-    pub(crate) fn current_sel(&self) -> usize {
-        self.inner.model.borrow().current_sel
-    }
-    pub(crate) fn current_phrase(&self) -> String {
-        let sel = self.current_sel();
-        self.inner.model.borrow().items[sel].clone()
     }
     pub(crate) fn set_position(&self, x: i32, y: i32) {
         let view = self.inner.view.borrow();

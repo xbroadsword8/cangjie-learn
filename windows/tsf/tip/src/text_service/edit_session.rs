@@ -18,7 +18,7 @@ use windows::Win32::UI::TextServices::{
 };
 use windows_core::{BOOL, HSTRING, Interface, Param, Result, implement};
 
-use super::chewing::CompositionString;
+use super::cangjie::CompositionString;
 
 pub(crate) fn request_edit_session(
     context: &ITfContext,
