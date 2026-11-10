@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "stable/*"]
+  pull_request:
+    branches: ["main", "stable/*"]
+  merge_group:
+    types: [checks_requested]
+  workflow_call:
+    inputs:
+      nightly:
+        description: "Update all submodules to build nightly build"
+        default: true
+        required: true
+        type: boolean
+      package:
+        description: "Also build the (unsigned) MSI"
+        default: true
+        required: false
+        type: boolean
+    outputs:
+      binaries-artifact-id:
+        description: "Staging output, zipped by upload-artifact"
+        value: ${{ jobs.build.outputs.binaries-artifact-id }}
+      unsigned-artifact-id:
+        description: "Unsigned Installer"
+        value: ${{ jobs.package.outputs.artifact-id }}
+      version:
+        description: "Version"
+        value: ${{ jobs.build.outputs.version }}
+      msi-name:
+        description: "Installer file name"
+        value: ${{ jobs.build.outputs.msi-name }}
+
+env:
+  CACHE_SERVER: https://cache.nix.qwty.org
+  CACHE_PUB_KEY: qwty-nix-cache-1:Vwy+6/XVxQxkqEq4xfWrz9vCI+95slOCjYNS63+4MK0=
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: fedora:44
+    name: Build
+    outputs:
+      version: ${{ steps.version-info.outputs.version }}
+      msi-name: ${{ steps.version-info.outputs.msi-name }}
+      binaries-artifact-id: ${{ steps.upload-binaries.outputs.artifact-id }}
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo dnf -y install nix git jq
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate version info
+        id: version-info
+        env:
+          NIGHTLY: ${{ inputs.nightly }}
+        run: |
+          git config --global --add safe.directory /__w/windows-chewing-tsf/windows-chewing-tsf
+          nix/version.sh
+          cat tip/rc/version.rc
+          cat installer/version.json
+          cat installer/version.wxi
+          version=`jq -r .product_version installer/version.json`
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo msi-name=`nix-instantiate --eval --raw --arg nightly $NIGHTLY -A msi.name` >> "$GITHUB_OUTPUT"
+
+      - name: Build binaries
+        env:
+          NIGHTLY: ${{ inputs.nightly || github.event_name == 'pull_request' }}
+        run: |
+          nix-build -A staging --arg nightly $NIGHTLY --extra-substituters $CACHE_SERVER --extra-trusted-public-keys $CACHE_PUB_KEY
+
+      - id: upload-binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: Unsigned Binaries
+          path: result
+
+  package:
+    name: Package (unsigned)
+    if: ${{ inputs.package }}
+    needs: [build]
+    uses: ./.github/workflows/msi-build.yml
+    with:
+      input-artifact-name: Unsigned Binaries
+      output-artifact-name: Unsigned Installer
+      msi-name: ${{ needs.build.outputs.msi-name }}

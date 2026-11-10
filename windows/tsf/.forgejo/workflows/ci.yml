@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "stable/*"]
+  pull_request:
+    branches: ["main", "stable/*"]
+  merge_group:
+    types: [checks_requested]
+  workflow_call:
+    inputs:
+      nightly:
+        description: "Update all submodules to build nightly build"
+        default: true
+        required: true
+        type: boolean
+    outputs:
+      unsigned-artifact-id:
+        description: "Unsigned Installer"
+        value: ${{ jobs.package.outputs.unsigned-artifact-id }}
+
+env:
+  CACHE_SERVER: https://cache.nix.qwty.org
+  CACHE_PUB_KEY: qwty-nix-cache-1:Vwy+6/XVxQxkqEq4xfWrz9vCI+95slOCjYNS63+4MK0=
+
+jobs:
+  build:
+    runs-on: fedora-latest
+    name: Build
+    steps:
+      - name: Install build dependencies
+        run: |
+          sudo dnf -y install nix git
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Generate version info
+        run: |
+          nix/version.sh
+          cat tip/rc/version.rc
+          cat installer/version.json
+          cat installer/version.wxi
+
+      - name: Build nightly
+        if: ${{ inputs.nightly || github.event_name == 'pull_request' }}
+        run: |
+          nix-build --arg nightly true --extra-substituters $CACHE_SERVER --extra-trusted-public-keys $CACHE_PUB_KEY 
+
+      - name: Build release
+        if: ${{ !inputs.nightly && github.event_name != 'pull_request' }}
+        run: |
+          nix-build --extra-substituters $CACHE_SERVER --extra-trusted-public-keys $CACHE_PUB_KEY 
+
+      - name: Cache result
+        shell: nix-shell -p niks3 --command '{0}'
+        env:
+          API_TOKEN: ${{ secrets.NIX_CACHE_API_TOKEN }}
+        run: |
+          echo "$API_TOKEN" > token
+          niks3 push --server-url $CACHE_SERVER --auth-token-path token ./result ./result-*
+
+      - uses: https://code.forgejo.org/forgejo/upload-artifact@v4
+        if: false
+        with:
+          name: Installer Artifact
+          path: result
