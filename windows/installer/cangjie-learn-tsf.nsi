@@ -1,6 +1,8 @@
 ; 倉頡學習版（TSF 原生版）安裝程式。由 windows/package-tsf.sh 編譯：makensis -DVERSION=... -DSTAGE=<組好的檔案目錄>
 ; 實際步驟都在 setup-tsf.ps1；這裡只負責解壓、提權、移除程式項目。
 Unicode true
+; 英文版 Windows 的對話框預設字型沒有中文字（標題、按鈕會變方塊）：指定 Windows 10 起內建的微軟正黑體
+SetFont "Microsoft JhengHei UI" 9
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "x64.nsh"

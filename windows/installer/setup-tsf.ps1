@@ -19,7 +19,8 @@ $Dir64 = Join-Path $env:ProgramW6432 'CangjieLearn'
 $Dir32 = Join-Path ${env:ProgramFiles(x86)} 'CangjieLearn'
 $MinGit = Join-Path $Dir64 'mingit'
 
-function Say($msg) { $line = "$(Get-Date -Format 'HH:mm:ss') $msg"; Write-Output $line; Add-Content -Path $Log -Value $line -Encoding UTF8 }
+# 用 Write-Host 不用 Write-Output：輸出管線的字串會混進函式回傳值（Remove-Locked 曾因此把「使用中」誤判成刪掉）
+function Say($msg) { $line = "$(Get-Date -Format 'HH:mm:ss') $msg"; Write-Host $line; Add-Content -Path $Log -Value $line -Encoding UTF8 }
 function Fail($msg) { Say "失敗：$msg"; exit 1 }
 
 # NSIS 是 32 位元，叫起來的 PowerShell 可能也是 32 位元：登錄檔一律明確指定 64／32 位元檢視，不靠轉向
@@ -48,6 +49,12 @@ function Prune($dir, $keep) {
         Where-Object { $_.FullName -ne $keep } | ForEach-Object { [void](Remove-Locked $_.FullName) }
 }
 
+# tsfreg.exe 是視窗程式（windows_subsystem）：直接用 & 呼叫 PowerShell 不會等它跑完，要 Start-Process -Wait
+function Tsfreg($argList) {
+    $p = Start-Process (Join-Path $Dir64 'tsfreg.exe') -ArgumentList $argList -Wait -PassThru
+    return $p.ExitCode
+}
+
 # --- 輸入法清單 ---
 function Set-Tips($add, $remove) {
     $list = Get-WinUserLanguageList
@@ -74,56 +81,37 @@ function Find-Pime {
     foreach ($d in $c) { if (Test-Path (Join-Path $d 'python\server.py')) { return (Resolve-Path $d).Path } }
     return $null
 }
-function Stop-Backend($pime) {
-    Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-        Where-Object { $_.CommandLine -like '*server.py*' -and $_.ExecutablePath -like "$pime*" } |
-        ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+# 刪資料夾：刪得掉的當場刪，被佔用的（例如 PIME 後端開著的 model.db）排到下次開機刪
+function Remove-Tree($dir) {
+    $left = 0
+    foreach ($f in @(Get-ChildItem $dir -Recurse -File -Force -ErrorAction SilentlyContinue)) { if (-not (Remove-Locked $f.FullName)) { $left++ } }
+    Get-ChildItem $dir -Recurse -Directory -Force -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending |
+        ForEach-Object { try { Remove-Item $_.FullName -Force -ErrorAction Stop } catch { [void][CJ.Native]::MoveFileEx($_.FullName, $null, 4) } }
+    try { Remove-Item $dir -Force -ErrorAction Stop } catch { [void][CJ.Native]::MoveFileEx($dir, $null, 4) }
+    return $left
 }
-# 移除舊版後要重新註冊 PIME（它會重掃 input_methods）並重開 PIMELauncher，否則酷倉等其他 PIME 輸入法可能卡住
-function Restart-Pime($pime) {
-    foreach ($j in @("$env:windir\System32\regsvr32.exe", "$pime\x64\PIMETextService.dll"),
-                   @("$env:windir\SysWOW64\regsvr32.exe", "$pime\x86\PIMETextService.dll")) {
-        $exe = $j[0] -replace '\\System32\\', $(if ([Environment]::Is64BitProcess) { '\System32\' } else { '\Sysnative\' })
-        if (Test-Path $j[1]) { Start-Process $exe -ArgumentList '/s', "`"$($j[1])`"" -Wait }
-    }
-    $exe = Join-Path $pime 'PIMELauncher.exe'
-    if (Get-Process PIMELauncher -ErrorAction SilentlyContinue) {
-        Start-Process $exe -ArgumentList '/quit' -Wait
-        for ($i = 0; $i -lt 20 -and (Get-Process PIMELauncher -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 250 }
-        Get-Process PIMELauncher -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-    }
-    Stop-Backend $pime
-    $t = 'CangjieLearnStartPime'
-    try {
-        $me = [Security.Principal.WindowsIdentity]::GetCurrent().Name
-        $principal = New-ScheduledTaskPrincipal -UserId $me -LogonType Interactive -RunLevel Limited
-        Register-ScheduledTask -TaskName $t -Action (New-ScheduledTaskAction -Execute $exe) -Principal $principal -Force | Out-Null
-        Start-ScheduledTask -TaskName $t
-        for ($i = 0; $i -lt 20 -and -not (Get-Process PIMELauncher -ErrorAction SilentlyContinue); $i++) { Start-Sleep -Milliseconds 500 }
-    } catch { Say "重開 PIME 失敗：$_" }
-    finally { Unregister-ScheduledTask -TaskName $t -Confirm:$false -ErrorAction SilentlyContinue }
-}
+# 不重開 PIME、也不停它的後端：正在用舊版打字的程式若遇到 PIMELauncher 重開，會因「Backend is not found」
+# 卡住一兩分鐘（2026-11-11 VM 實測）。只拿掉 TSF 註冊與 ime.json，舊版在已開著的程式裡照常可用到關掉為止，
+# 下次 PIME 啟動就不會再載入它。
 function Remove-OldPime {
     $pime = Find-Pime
     $dst = if ($pime) { Join-Path $pime 'python\input_methods\cjlearn' }
     $oldDir = Join-Path $env:ProgramW6432 'CangjieLearnPIME'
-    if (-not ($dst -and (Test-Path $dst)) -and -not (Test-Path $oldDir)) { return }
+    $hasProfile = (HKLM 64).OpenSubKey("SOFTWARE\Microsoft\CTF\TIP\$OldClsid\LanguageProfile\0x00000404\$OldGuid")
+    if (-not ($dst -and (Test-Path (Join-Path $dst 'ime.json'))) -and -not (Test-Path $oldDir) -and -not $hasProfile) { return }   # 只剩等開機刪的檔案不算
     Say '移除舊的 PIME 版倉頡學習版（PIME 本身與酷倉保留）'
-    if ($dst -and (Test-Path $dst)) {
-        for ($i = 0; (Test-Path $dst) -and $i -lt 10; $i++) {
-            Stop-Backend $pime
-            Remove-Item $dst -Recurse -Force -ErrorAction SilentlyContinue
-            if (Test-Path $dst) { Start-Sleep -Milliseconds 300 }
-        }
-        if (Test-Path $dst) { Say "注意：刪不掉 $dst（登出後可手動刪）" } else { Say "已刪除 $dst" }
-    }
     foreach ($view in 64, 32) {
         try { (HKLM $view).DeleteSubKeyTree("SOFTWARE\Microsoft\CTF\TIP\$OldClsid\LanguageProfile\0x00000404\$OldGuid", $false) } catch {}
         try { (HKLM $view).DeleteSubKeyTree('SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\CangjieLearnPIME', $false) } catch {}
     }
     Remove-Item "HKCU:\SOFTWARE\Microsoft\CTF\TIP\$OldClsid\LanguageProfile\0x00000404\$OldGuid" -Recurse -Force -ErrorAction SilentlyContinue
-    if (Test-Path $oldDir) { Remove-Item $oldDir -Recurse -Force -ErrorAction SilentlyContinue; Say "已刪除 $oldDir" }
-    if ($pime) { Restart-Pime $pime; Say 'PIME 已重新註冊並重開' }
+    if ($dst -and (Test-Path $dst)) {
+        Remove-Item (Join-Path $dst 'ime.json') -Force -ErrorAction SilentlyContinue
+        if (Test-Path (Join-Path $dst 'ime.json')) { Say "注意：刪不掉 $dst\ime.json" }
+        $left = Remove-Tree $dst
+        Say $(if ($left) { "已移除 $dst（$left 個檔案使用中，下次開機刪除）" } else { "已刪除 $dst" })
+    }
+    if (Test-Path $oldDir) { $left = Remove-Tree $oldDir; Say "已移除 $oldDir$(if ($left) { "（$left 個檔案下次開機刪除）" })" }
 }
 
 # --- 同步 ---
@@ -163,15 +151,11 @@ if (-not [Environment]::Is64BitOperatingSystem) { Fail '只支援 64 位元 Wind
 if ($Uninstall) {
     Set-Tips $null $Tip
     if (Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue) { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false; Say "已移除排程 $TaskName" }
-    if (Test-Path "$Dir64\tsfreg.exe") { & "$Dir64\tsfreg.exe" -u | ForEach-Object { Say "  $_" } }
+    if (Test-Path "$Dir64\tsfreg.exe") { $rc = Tsfreg '-u'; Say "tsfreg -u 代碼 $rc" }
     Remove-ComClass 64; Remove-ComClass 32
+    foreach ($view in 64, 32) { try { (HKLM $view).DeleteSubKeyTree("SOFTWARE\Microsoft\CTF\TIP\$Clsid", $false) } catch {} }   # tsfreg -u 會留下空的 TIP 機碼
     foreach ($d in $Dir64, $Dir32) {
-        if (-not (Test-Path $d)) { continue }
-        Prune $d ''
-        Get-ChildItem $d -Recurse -File | Where-Object Name -notlike 'cjlearn_tip_*.dll' | Remove-Item -Force -ErrorAction SilentlyContinue
-        Get-ChildItem $d -Recurse -Directory | Sort-Object { $_.FullName.Length } -Descending | Remove-Item -Force -Recurse -ErrorAction SilentlyContinue
-        if (-not (Get-ChildItem $d -ErrorAction SilentlyContinue)) { Remove-Item $d -Force -ErrorAction SilentlyContinue }
-        else { [void][CJ.Native]::MoveFileEx($d, $null, 4) }
+        if (Test-Path $d) { $left = Remove-Tree $d; if ($left) { Say "$d：$left 個檔案使用中，下次開機刪除" } }
     }
     if ($RemoveUserData) {
         if (Test-Path $UserData) { Remove-Item $UserData -Recurse -Force; Say "已刪除學習資料 $UserData" }
@@ -193,10 +177,16 @@ $dll64 = Join-Path $Dir64 "cjlearn_tip_$stamp.dll"; $dll32 = Join-Path $Dir32 "c
 Copy-Item (Join-Path $Source 'x64\cjlearn_tip.dll') $dll64 -Force
 Copy-Item (Join-Path $Source 'x86\cjlearn_tip.dll') $dll32 -Force
 foreach ($d in $Dir64, $Dir32) {
-    # model.db 可能正被舊版 DLL 開著（唯讀）：先改名再放新檔，舊檔排到開機刪
-    $m = Join-Path $d 'model.db'
-    if (Test-Path $m) { $old = "$m.old-$stamp"; try { Move-Item $m $old -Force; [void](Remove-Locked $old) } catch { Say "注意：model.db 換不掉：$_" } }
-    Copy-Item (Join-Path $Source 'model.db') $m -Force
+    # model.db 可能正被已載入的 DLL 開著（SQLite 不允許改名或刪除）：內容一樣就不動；
+    # 不一樣又換不掉，就排到下次開機替換——直接覆寫會讓正在用的程式讀到寫一半的資料庫
+    $m = Join-Path $d 'model.db'; $src = Join-Path $Source 'model.db'
+    if ((Test-Path $m) -and (Get-FileHash $m).Hash -eq (Get-FileHash $src).Hash) { }
+    else {
+        $moved = $true
+        if (Test-Path $m) { $old = "$m.old-$stamp"; try { Move-Item $m $old -Force -ErrorAction Stop; [void](Remove-Locked $old) } catch { $moved = $false } }
+        if ($moved) { Copy-Item $src $m -Force }
+        else { Copy-Item $src "$m.new" -Force; [void][CJ.Native]::MoveFileEx("$m.new", $m, 5); Say "碼表使用中，下次開機換新：$m" }   # 5 = REPLACE_EXISTING | DELAY_UNTIL_REBOOT
+    }
     Remove-Item (Join-Path $d 'data_dir.txt') -ErrorAction SilentlyContinue   # 開發測試用的設定不帶進正式版
 }
 foreach ($f in 'tsfreg.exe', 'cjlearn.ico', 'cjlearn-sync.exe') { Copy-Item (Join-Path $Source $f) $Dir64 -Force }
@@ -204,8 +194,8 @@ Say "已複製到 $Dir64、$Dir32"
 
 Set-ComClass 64 $dll64
 Set-ComClass 32 $dll32
-$out = & (Join-Path $Dir64 'tsfreg.exe') -r (Join-Path $Dir64 'cjlearn.ico') 2>&1
-$out | ForEach-Object { Say "  $_" }
+$rc = Tsfreg '-r', "`"$(Join-Path $Dir64 'cjlearn.ico')`""
+if ($rc -ne 0) { Fail "tsfreg -r 失敗（代碼 $rc）" }
 $k = (HKLM 64).OpenSubKey("SOFTWARE\Microsoft\CTF\TIP\$Clsid\LanguageProfile\0x00000404\$ProfileGuid")
 if (-not $k) { Fail '註冊後找不到倉頡學習版的 TSF 設定' }
 $k.Close()
@@ -216,7 +206,7 @@ Install-Sync $Source
 Prune $Dir64 $dll64; Prune $Dir32 $dll32
 # 之前開發測試留下的資料夾（同一個 CLSID，登錄檔已改指向正式版）
 foreach ($d in (Join-Path $env:ProgramW6432 'CangjieLearnTSF'), (Join-Path ${env:ProgramFiles(x86)} 'CangjieLearnTSF')) {
-    if (Test-Path $d) { Get-ChildItem $d -File | ForEach-Object { [void](Remove-Locked $_.FullName) }; Remove-Item $d -Force -Recurse -ErrorAction SilentlyContinue; Say "已清除開發版 $d" }
+    if (Test-Path $d) { [void](Remove-Tree $d); Say "已清除開發版 $d" }
 }
 Say '安裝完成'
 exit 0
