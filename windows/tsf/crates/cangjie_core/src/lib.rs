@@ -4,6 +4,7 @@ pub mod keymap;
 pub mod model;
 pub mod settings;
 pub mod sync;
+pub mod syncer;
 
 pub use composer::{Composer, KeyResult};
 pub use model::{Candidate, Model};

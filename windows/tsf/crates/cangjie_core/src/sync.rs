@@ -81,7 +81,7 @@ impl PeerWatcher {
     }
 }
 
-fn read_status(data_dir: &Path) -> Option<serde_json::Map<String, Value>> {
+pub fn read_status(data_dir: &Path) -> Option<serde_json::Map<String, Value>> {
     let text = std::fs::read_to_string(data_dir.join(STATUS_FILE)).ok()?;
     match serde_json::from_str::<Value>(&text).ok()? {
         Value::Object(m) if !m.is_empty() => Some(m),

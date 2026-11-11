@@ -10,3 +10,7 @@ serde_json = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+
+[[bin]]
+name = "cjlearn-sync"
+path = "src/bin/cjlearn-sync.rs"
