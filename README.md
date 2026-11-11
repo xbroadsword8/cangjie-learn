@@ -65,7 +65,23 @@ systemd drop-in `~/.config/systemd/user/org.freedesktop.IBus.session.GNOME.servi
 
 紀錄：引擎 log 在 `~/.cache/cangjie-learn/engine.log`。
 
-## Windows 版（PIME）
+## Windows 版（TSF 原生，2026-11-11 起；取代下方 PIME 版）
+
+PIME 版在 Word 拖尺規後整個打不出中文（Win11 測試機 穩定重現，問題在 PIME 層）。改用新酷音的 Rust TSF 外殼
+（codeberg.org/chewing/windows-chewing-tsf db0cb4e，GPL-3.0-or-later）換上倉頡核心，同測試 60/60 正常。評估與實測：`notes/01-windows-chewing-tsf評估.md`。
+
+- `windows/tsf/`：上游 workspace（匯入基準 commit `cadfdb2`）。`crates/cangjie_core`＝核心的 Rust 移植（composer／model／settings／keymap／sync，
+  差分測試讀 `mac/tests/cases.json` 與 Python 逐步比對）＋`cjlearn-sync`（同步程式，輸出與 Python 版逐位元組相同，`tests/test_sync_rust.py`）；
+  `tip/src/text_service/cangjie.rs`＝外殼（按鍵、組字、候選灰色字根、右鍵選單）。DLL 名 `cjlearn_tip.dll`，CLSID `{979B58A7-…}`、profile `{C68442D3-…}`。
+- 行為同 PIME 版；另外 Win 鍵按著時不處理任何鍵（原版新酷音 Win+Shift+S 截圖會誤切英文）。資料沿用 `%APPDATA%\PIME\cjlearn\`，model.db 讀 DLL 旁邊；
+  DLL 旁有 `data_dir.txt` 時改用它寫的資料夾（測試用，隔開真正的學習資料與同步）。
+- 這台 Linux 交叉編譯（mingw，不需 Visual Studio）：`windows/package-tsf.sh` → `windows/dist/cangjie-learn-setup-<日期>.exe`（NSIS＋`windows/installer/setup-tsf.ps1`，附 MinGit，不含 PIME）。
+  開發時直接裝到測試機：`DEPLOY=<ssh 主機> windows/tsfdev/stage.sh <暫存資料夾>`（`devinstall.ps1`，可加 `DEVARGS="-DataDir ..."`）。
+- 安裝程式：DLL 檔名帶時間戳（舊版被程式載入時鎖住）、被佔用的檔案排到開機刪；自動移除舊 PIME 版倉頡學習版（PIME 與酷倉保留），
+  ⚠ **移除舊版時不能重開 PIME**：正在用舊版的程式會因 `Backend is not found` 卡住一兩分鐘（2026-11-11 VM 重現），所以只拿掉 TSF 註冊與 `ime.json`。
+- 實機測試腳本：`windows/wordtest/tsfsmoke.ps1`（Word 逐項打字）、`wordtest.ps1 -Tip`（拖尺規）；安裝程式 VM 測試同下方 `windows/vmtest/`（`TIP=` 指定要測的輸入法）。
+
+## Windows 版（PIME，舊版）
 
 外殼在 `windows/pime/cjlearn/`（`cjlearn_ime.py` 接 PIME、`keymap.py` 把 Windows 鍵碼翻成 keysym），核心直接沿用 `cjlearn/model.py`、`composer.py`。
 ⚠ PIME 1.3 的 DLL 只在 onKeyDown／onKeyUp 給 edit session；filterKeyDown／filterKeyUp／onCommand 的回覆若帶 showMessage，會對空指標取值讓宿主程式當掉（`PIMEClient.cpp:133`，2026-11-01 讓 explorer.exe 當掉過）。畫面相關回覆一律留到 onKeyDown／onKeyUp，`test_no_session_replies_are_safe` 守著這條。

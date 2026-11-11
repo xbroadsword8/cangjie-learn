@@ -42,7 +42,12 @@ function Remove-ComClass($view) {
 Add-Type -Namespace CJ -Name Native -MemberDefinition '[DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool MoveFileEx(string a, string b, int f);'
 function Remove-Locked($path) {
     try { Remove-Item $path -Force -ErrorAction Stop; return $true }
-    catch { [void][CJ.Native]::MoveFileEx($path, $null, 4); Say "使用中，下次開機刪除：$path"; return $false }
+    catch {
+        # 一定要傳 [NullString]::Value：PowerShell 會把 $null 轉成空字串，MoveFileEx 就失敗、開機也不會刪（2026-11-11 VM 實測）
+        if ([CJ.Native]::MoveFileEx($path, [NullString]::Value, 4)) { Say "使用中，下次開機刪除：$path" }
+        else { Say "注意：刪不掉也排不進開機刪除：$path" }
+        return $false
+    }
 }
 function Prune($dir, $keep) {
     Get-ChildItem $dir -Filter 'cjlearn_tip_*.dll' -ErrorAction SilentlyContinue |
@@ -85,9 +90,13 @@ function Find-Pime {
 function Remove-Tree($dir) {
     $left = 0
     foreach ($f in @(Get-ChildItem $dir -Recurse -File -Force -ErrorAction SilentlyContinue)) { if (-not (Remove-Locked $f.FullName)) { $left++ } }
-    Get-ChildItem $dir -Recurse -Directory -Force -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending |
-        ForEach-Object { try { Remove-Item $_.FullName -Force -ErrorAction Stop } catch { [void][CJ.Native]::MoveFileEx($_.FullName, $null, 4) } }
-    try { Remove-Item $dir -Force -ErrorAction Stop } catch { [void][CJ.Native]::MoveFileEx($dir, $null, 4) }
+    # 資料夾由深到淺：空的當場刪；還有（排到開機刪的）檔案就也排進開機刪除——Windows 依登記順序處理，
+    # 檔案在前、資料夾在後，到時已經空了。別對非空資料夾下 Remove-Item：沒有 -Recurse 時它會停下來等確認。
+    $dirs = @(Get-ChildItem $dir -Recurse -Directory -Force -ErrorAction SilentlyContinue | Sort-Object { $_.FullName.Length } -Descending | ForEach-Object FullName) + @($dir)
+    foreach ($d in $dirs) {
+        if (@(Get-ChildItem $d -Force -ErrorAction SilentlyContinue).Count -eq 0) { Remove-Item $d -Force -ErrorAction SilentlyContinue }
+        if (Test-Path $d) { if (-not [CJ.Native]::MoveFileEx($d, [NullString]::Value, 4)) { Say "注意：排不進開機刪除：$d" } }
+    }
     return $left
 }
 # 不重開 PIME、也不停它的後端：正在用舊版打字的程式若遇到 PIMELauncher 重開，會因「Backend is not found」
