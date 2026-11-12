@@ -1,14 +1,52 @@
-# 倉頡學習版（IBus 引擎 `cangjie-learn`）
+# 倉頡學習版
 
-倉頡三代碼表（取自 ibus-table），改了兩件事：
+[English](README.en.md) | [繁體中文](README.md)
 
-1. **選字看上下文、會學習**：候選字依「前 1–3 個字＋候選字是否組成常用詞」（libchewing 詞頻）＋「你自己的用字紀錄」排序。完整碼命中的字永遠排在補完候選前面。手動選了非第一候選＝糾正，一次記 3 筆。上文就能決定的選字（「自己」的己、「而已」的已：詞庫裡該 bigram 比同碼其他字多 10 倍以上）只記成 bigram，不算進單字偏好，免得「自己」打多了，句首的「已經」也變成「己經」。學習資料存在 `~/.local/share/cangjie-learn/user.db`。
-2. **標點仿酷倉**：中文模式下標點鍵預設出半形，**加 Ctrl 才出中文標點**。單按一下 Shift 切換中／英。
+[![下載倉頡學習版](https://img.shields.io/github/v/release/xbroadsword8/cangjie-learn?label=%E4%B8%8B%E8%BC%89%20Windows%20%E7%89%88&style=for-the-badge&logo=windows)](https://github.com/xbroadsword8/cangjie-learn/releases/latest)
 
-支援 Linux（IBus）、Windows（TSF，Windows 10／11）、macOS。Windows 安裝檔在 [Releases](../../releases)。
-安裝檔沒有數位簽章，第一次執行時 SmartScreen 會顯示「不明發行者」，按「其他資訊 → 仍要執行」即可。
+下載安裝程式，雙擊執行，裝好就能用。
 
-## Ctrl＋標點對照
+**倉頡學習版**是一套會學習的倉頡輸入法：選字時會參考你前面打了什麼，也會記住你常用哪個字，越用越順手。支援 Windows 10／11、Linux（IBus）與 macOS。
+
+## 為什麼做這個輸入法
+
+倉頡同碼字很多，傳統倉頡輸入法只用固定字頻排序，同一個碼永遠給同一個字。例如「已」和「己」同碼，打「已經」和「自己」總有一邊要手動選字。
+
+倉頡學習版改成：
+
+- **看上下文選字**：參考前 1–3 個字，以及候選字能不能和它們組成常用詞。打「自」之後給「己」，打「而」之後給「已」，句首打「已經」也不會被「自己」打多了而帶歪。
+- **記住你的用字**：手動選了別的字，就當成你在糾正，下次會排前面。
+- **完整碼優先**：完整碼對到的字，永遠排在「還沒打完」的補完候選前面。補完候選後面用橘色小字顯示還沒打的部件，順便學字根。
+- **標點習慣仿酷倉**：中文模式下標點鍵出半形，**加 Ctrl 才出中文標點**，打程式碼、網址不用一直切換。也可以改成和微軟倉頡一樣直接出全形。
+
+## 下載與安裝（Windows）
+
+從 [Releases](https://github.com/xbroadsword8/cangjie-learn/releases/latest) 下載 `cangjie-learn-setup-<日期>.exe`：
+
+1. 雙擊安裝程式，Windows 詢問是否允許變更時按「是」。
+2. 安裝完成後，「倉頡學習版」會自動加進「中文（台灣）」的輸入法清單。
+3. 按 **Win＋空白鍵**切換到倉頡學習版。工作列會出現「倉」圖示，旁邊的「中／英」表示目前的輸入模式。
+
+安裝程式沒有程式碼簽章，第一次執行時 Windows SmartScreen 可能出現「Windows 已保護您的電腦」，按「其他資訊 → 仍要執行」。
+
+- **更新**：直接執行新版安裝程式，舊版會自動移除，學習資料保留。
+- **移除**：「設定 → 應用程式 → 已安裝的應用程式」找到「倉頡學習版」解除安裝。學習資料預設保留。
+
+Linux 與 macOS 目前要自己從原始碼建置，見下方「建置」。
+
+## 使用方式
+
+| 按鍵 | 作用 |
+|---|---|
+| 單按 Shift | 切換中文／英文 |
+| Shift＋空白 | 切換全形／半形英數（Windows 版） |
+| 空白 | 送出第一個候選字 |
+| 1–9 | 選字 |
+| `-` `=` 或 PageUp／PageDown | 翻頁 |
+| Enter | 把打到一半的碼當英文字母送出 |
+| Esc | 取消 |
+
+### Ctrl＋標點
 
 | 按鍵 | 出 | 按鍵 | 出 |
 |---|---|---|---|
@@ -20,51 +58,60 @@
 | Ctrl+Shift+, / . | 《 》 | Ctrl+Shift+6 | …… |
 | Ctrl+Shift+- | —— | Ctrl+Shift+` | ～ |
 
-完整對照表寫在 `cjlearn/composer.py` 的 `CJK_PUNCT`。
+### 選項
 
-Ctrl＋標點的字會在**放開 Ctrl 後約 0.03 秒**才出現：Chrome 會丟掉「帶 Ctrl 的按鍵處理期間」送出的字，
-在實際桌面上連「Ctrl 還按著」時送的也會丟（一般網頁：2026-10-31 在真桌面實測；DevDesk 的 xterm.js：隔離環境重現），所以一定要等放開 Ctrl。按住 Ctrl 連點幾下、或緊接著打中文字，順序都不會亂。
-各應用程式的實測：`python3 tests/app_probe.py chrome|xterm|gtk4`，加 `PROBE_SEQ=burst` 或 `PROBE_SEQ=hold` 測連點與按住。
+在工作列的「倉」或「中／英」圖示上**按右鍵**（Linux 在 IBus 輸入法選單、Mac 在選單列輸入法選單）：
 
-## 其他按鍵
+- **打錯碼按空白清掉**（預設開）：碼打錯、沒有候選字時，按空白直接清掉，不會卡在那裡。
+- **標點直接出全形**（預設關）：給用慣微軟倉頡的人，不用加 Ctrl 就出 `，。；：？！（）「」` 等全形標點。網址、email、算式常用的 `@ # - = /` 照舊出半形。
+- **全形英數**：同 Shift＋空白。
 
-空白鍵送出第一候選；1–9 選字；`-`／`=`／PageUp／PageDown 翻頁；方向鍵移動游標；Enter 把打到一半的碼當英文字母送出；Esc 取消。補完候選後面的橘色字是還沒打的部件。
+## 學習資料與隱私
 
-**打錯碼按空白清掉**（預設開）：碼打錯、沒有任何候選字時，按空白或數字鍵直接清掉字碼（鍵不外漏），不會停在那裡。
-開關：Linux 在 IBus 輸入法選單、Windows 在工作列「中／英」圖示按右鍵、Mac 在選單列輸入法選單。
-**標點直接出全形**（預設關，給用慣微軟倉頡的人）：打開後中文模式按 `， 。 ； ： ？ ！ （ ） 「 」 『 』 《 》 、(\)` 不用加 Ctrl 就出全形；
-`@ # - = /` 等符號照舊出半形（網址、email、算式），組字中 `-`／`=` 仍是翻頁，英文模式全是半形。開關位置同上。
-選項存在學習資料旁的 `settings.json`（`{"clear_on_error": true, "full_punct": false}`，三個平台格式相同，`cjlearn/settings.py`）。
+- 學習資料只存在你自己的電腦上，輸入法本身**不連網**：
+  - Windows：`%APPDATA%\PIME\cjlearn\user.db`
+  - Linux：`~/.local/share/cangjie-learn/user.db`
+  - macOS：`~/Library/Application Support/CangjieLearn/user.db`
+- 想讓多台電腦共用學習資料，可以自行設定一個 git 版本庫來同步（預設關閉），做法見[開發筆記](docs/開發筆記.md#學習資料同步三個平台共用)。
 
-## 安裝與移除
+## 限制
 
-```text
-./install.sh          # 建 data/model.db、註冊到 ibus、重啟 ibus（不需 root）
-python3 -m pytest -q tests          # 邏輯測試
-python3 tests/e2e_ibus.py           # 端到端：隔離的 ibus-daemon，不碰使用者的 ibus 與學習資料
-python3 tests/app_probe.py chrome   # 隔離 Xvfb＋真的 Chrome／xterm／GTK4，模擬實體按鍵
+- Windows 版只支援 Windows 10／11（x64）。
+- Windows 11 開始功能表的搜尋框是沙箱程式，讀不到學習資料，在那裡只會照詞庫選字（不影響打字，學到的也不會存）。
+- macOS 版需要自己建置並在「系統設定 → 鍵盤 → 輸入方式」手動加入；Linux 版的 `install.sh` 目前針對 GNOME 的 IBus。
+
+## 建置
+
+選字邏輯有三份實作，用差分測試確保逐步一致：Python（Linux）、Rust（Windows）、Swift（macOS）。
+
+```bash
+# Linux（IBus）：建詞庫、註冊到 ibus（不需 root）
+./install.sh
+python3 -m pytest -q tests
 ```
 
-安裝做的事：`~/.local/libexec/ibus-engine-cangjie-learn`（啟動殼）、`~/.local/share/cangjie-learn/component/cangjie-learn.xml`、
-systemd drop-in `~/.config/systemd/user/org.freedesktop.IBus.session.GNOME.service.d/cangjie-learn.conf`（設 `IBUS_COMPONENT_PATH`）。
-⚠ `IBUS_COMPONENT_PATH` 會**取代**系統路徑，所以一定要含 `/usr/share/ibus/component`，否則 ibus 起不來（2026-10-28 踩過）。
+```bash
+# Windows：在 Linux 交叉編譯並打包 NSIS 安裝程式（需 mingw-w64、rustup target x86_64-pc-windows-gnu）
+windows/package-tsf.sh
+```
 
-移除：刪掉上面三個檔、`systemctl --user daemon-reload && systemctl --user restart org.freedesktop.IBus.session.GNOME.service`，再從 GNOME 輸入來源拿掉「倉頡學習版」。
+```bash
+# macOS：在 Mac 上編譯並安裝到 ~/Library/Input Methods（需先產生 data/model.db）
+mac/build.sh
+```
 
-## 學習資料同步（三個平台共用）
+實作細節、測試方法與踩過的坑都寫在[開發筆記](docs/開發筆記.md)。
 
-每台電腦把自己的次數存成 `<名稱>.json`，經一個 git 版本庫交換；選字時把其他台的次數加進來（`cjlearn/sync.py`）。
-- 輸入法本身不連網，只讀 `<資料夾>/sync/`；git 推拉由排程每 15 分鐘做：Linux systemd timer `cangjie-learn-sync`（install.sh 裝）、
-  Windows 工作排程 `CangjieLearnSync`（安裝程式裝，附 MinGit）、Mac launchd `com.xmac.inputmethod.CangjieLearn.sync`（mac/build.sh 裝）。
-- 每台只寫自己的檔，所以不會有合併衝突。重灌後學習資料是空的、版本庫裡有同名檔 → 自動接回。
-- 設定在 `settings.json`：`sync_remote`（git ssh 網址，**不寫進 repo**）、`sync_name`（檔名，第一次同步時填入）。沒設 `sync_remote` 就不同步。
-- 每台用專用金鑰 `<資料夾>/sync_key`；伺服器端 authorized_keys 要加 `command="…/cjlearn-git-only",restrict`，只能存取這一個版本庫。
-- 狀態寫在 `sync_status.json`，輸入法選單會顯示「同步：N 分鐘前成功」或「⚠ 同步失敗（上次成功…）」。
+### 專案結構
 
-## 資料來源
-
-- 碼表：`/usr/share/ibus-table/tables/cangjie3.db`
-- 詞頻：libchewing-data `tsi.csv`／`word.csv`（LGPL-2.1-or-later），放 `data/raw/`；`scripts/build_data.py` 產生 `data/model.db`
+| 目錄 | 內容 |
+|---|---|
+| `cjlearn/` | Python 版核心（組字、選字模型、學習）與 IBus 引擎 |
+| `windows/tsf/` | Windows 版：新酷音 TSF 外殼改成倉頡（`crates/cangjie_core` 是核心的 Rust 移植，`tip/` 是外殼） |
+| `windows/installer/` | Windows 安裝程式（NSIS） |
+| `mac/` | macOS 版：`Core/` 核心的 Swift 移植、`App/` InputMethodKit 外殼 |
+| `scripts/build_data.py` | 從碼表與詞頻產生 `data/model.db` |
+| `tests/` | 邏輯測試、IBus 端到端測試、跨實作差分測試 |
 
 ## 致謝與授權
 
@@ -79,75 +126,8 @@ systemd drop-in `~/.config/systemd/user/org.freedesktop.IBus.session.GNOME.servi
 - **酷倉**：「加 Ctrl 才出中文標點」的習慣是照酷倉的用法做的。
 - 安裝程式用 [NSIS](https://nsis.sourceforge.io/) 打包，內附 [MinGit](https://github.com/git-for-windows/git)（Git for Windows，GPL-2.0）供學習資料同步使用。
 
-授權：**GPL-3.0**（全文見 `LICENSE`）。依 GPL，修改後再散佈也必須公開原始碼並沿用同一授權。
+授權：[GPL-3.0](LICENSE)。可以自由使用、修改、再散布；再散布修改版時，必須一併公開原始碼並沿用同一授權。
 
-紀錄：引擎 log 在 `~/.cache/cangjie-learn/engine.log`。
+本軟體依「現狀」提供，不負任何擔保。
 
-## Windows 版（TSF 原生，2026-11-11 起；取代下方 PIME 版）
-
-PIME 版在 Word 拖尺規後整個打不出中文（Win11 測試機 穩定重現，問題在 PIME 層）。改用新酷音的 Rust TSF 外殼
-（codeberg.org/chewing/windows-chewing-tsf db0cb4e，GPL-3.0-or-later）換上倉頡核心，同測試 60/60 正常。評估與實測：`notes/01-windows-chewing-tsf評估.md`。
-
-- `windows/tsf/`：上游 workspace（匯入基準 commit `cadfdb2`）。`crates/cangjie_core`＝核心的 Rust 移植（composer／model／settings／keymap／sync，
-  差分測試讀 `mac/tests/cases.json` 與 Python 逐步比對）＋`cjlearn-sync`（同步程式，輸出與 Python 版逐位元組相同，`tests/test_sync_rust.py`）；
-  `tip/src/text_service/cangjie.rs`＝外殼（按鍵、組字、候選橘色字根提示、右鍵選單）。DLL 名 `cjlearn_tip.dll`，CLSID `{979B58A7-…}`、profile `{C68442D3-…}`。
-- 行為同 PIME 版；另外 Win 鍵按著時不處理任何鍵（原版新酷音 Win+Shift+S 截圖會誤切英文）。資料沿用 `%APPDATA%\PIME\cjlearn\`，model.db 讀 DLL 旁邊；
-  DLL 旁有 `data_dir.txt` 時改用它寫的資料夾（測試用，隔開真正的學習資料與同步）。
-- TSF 版多了**全形英數**（2026-11-12）：Shift＋空白切換（中英模式都可），全形時字母、數字、符號、空白都轉成 U+FF01–FF5E／U+3000（中文模式小寫字母照常組字）；
-  設定存 `settings.json` 的 `full_shape`，右鍵選單可勾。Ctrl＋標點、「標點直接出全形」優先於它。
-- 有些程式換欄位時會自己把鍵盤 OpenClose 設成 0（2026-11-12 Win11 測試機 按鍵紀錄：按 Enter 換焦點後就被關掉，之後 Shift 全無反應、卡在英文）。關閉時圖示顯示「英」，**單按 Shift 會重新打開並回到中文**（VM 用 Ctrl＋空白模擬驗過）。
-- ⚠ **沙箱程式讀不到學習資料夾**（Win11 開始功能表的搜尋 SearchHost 是 AppContainer）。交給 SQLite 開的話它遇到拒絕存取會重試好幾秒，舊版每次切到搜尋就卡住、打不出字（2026-11-12 Win11 測試機）。現在先用 `read_dir` 判斷，讀不到就直接用 `:memory:` 學習資料（照詞庫選字、學到的不存），按鍵紀錄改寫到該程式自己的 `%TEMP%\cjlearn-keylog.txt`。VM 用 `data_dir.txt`＋icacls 拒絕存取模擬驗過。
-- 除錯用按鍵紀錄：學習資料夾放一個空檔 `keylog.on`，之後新開的程式會把按鍵事件寫到同資料夾 `keylog.txt`（只記非英數鍵的鍵碼與 Shift/Ctrl/Alt/Win、中英狀態，不記打了哪個字）。
-- 這台 Linux 交叉編譯（mingw，不需 Visual Studio）：`windows/package-tsf.sh` → `windows/dist/cangjie-learn-setup-<日期>.exe`（NSIS＋`windows/installer/setup-tsf.ps1`，附 MinGit，不含 PIME）。
-  開發時直接裝到測試機：`DEPLOY=<ssh 主機> windows/tsfdev/stage.sh <暫存資料夾>`（`devinstall.ps1`，可加 `DEVARGS="-DataDir ..."`）。
-- 安裝程式：DLL 檔名帶時間戳（舊版被程式載入時鎖住）、被佔用的檔案排到開機刪；自動移除舊 PIME 版倉頡學習版（PIME 與酷倉保留），
-  ⚠ **移除舊版時不能重開 PIME**：正在用舊版的程式會因 `Backend is not found` 卡住一兩分鐘（2026-11-11 VM 重現），所以只拿掉 TSF 註冊與 `ime.json`。
-- ⚠ **Google Drive 會把安裝程式標成病毒、擋下載**（2026-11-12：20261111／20261112 版的 exe 與一般 zip 都被擋，API 回 `cannotDownloadAbusiveFile`；Win11 測試機 Defender 掃描乾淨）。發佈時改放**有密碼的 zip**（Drive 掃不進去，實測可下載）；密碼寫在 `說明.txt`。
-- 實機測試腳本：`windows/wordtest/tsfsmoke.ps1`（Word 逐項打字）、`wordtest.ps1 -Tip`（拖尺規）；安裝程式 VM 測試同下方 `windows/vmtest/`（`TIP=` 指定要測的輸入法）。
-
-## Windows 版（PIME，舊版）
-
-外殼在 `windows/pime/cjlearn/`（`cjlearn_ime.py` 接 PIME、`keymap.py` 把 Windows 鍵碼翻成 keysym），核心直接沿用 `cjlearn/model.py`、`composer.py`。
-⚠ PIME 1.3 的 DLL 只在 onKeyDown／onKeyUp 給 edit session；filterKeyDown／filterKeyUp／onCommand 的回覆若帶 showMessage，會對空指標取值讓宿主程式當掉（`PIMEClient.cpp:133`，2026-11-01 讓 explorer.exe 當掉過）。畫面相關回覆一律留到 onKeyDown／onKeyUp，`test_no_session_replies_are_safe` 守著這條。
-與 Linux 版差異：Ctrl＋標點是當下就出字（TSF 在按鍵處理中送字沒問題，不用等放開 Ctrl）；組字中按 Tab 等鍵會送出第一候選並吃掉該鍵。
-
-```text
-windows/build.sh                     # 組出 windows/build/cjlearn/（外殼＋核心＋data/model.db）
-python3 -m pytest -q tests           # 含 test_windows_pime.py：用 PIME 1.3 的 textService.py 模擬 Windows 按鍵
-```
-
-**安裝程式**：`windows/package.sh` → `windows/dist/cangjie-learn-pime-setup-<日期>.exe`（NSIS 外殼＋`windows/installer/setup.ps1` 做實際步驟，附 PIME 1.3.0 官方安裝檔，sha256 寫在 package.sh）。
-makensis 不需 root：`apt-get download nsis nsis-common` 後 `dpkg -x` 到 `~/.local/opt/nsis`（package.sh 會自動做）。
-setup.ps1 流程：找 PIME（沒有就開附帶的安裝程式）→ 複製 → 用 PIME 的 Python 跑 smoke_pime.py（沒過就撤回）→ regsvr32 → 重開後端 → 加入輸入法清單。移除會清 TSF profile 與清單、預設保留學習資料。
-2026-11-02 在 Win11 測試機 實測 `/S` 安裝（蓋舊版、全新）與移除皆正確，酷倉不受影響。成品放 Google Drive `倉頡學習版/`。
-
-⚠ 兩個只有「第一次裝」才會踩到的坑（2026-11-07 在 Windows 10 VM `cj-win10` 重現並修好）：
-- **PIMELauncher 只在啟動時掃一次 `input_methods\*\ime.json`**。第一次裝倉頡學習版後不重開它，切到這個輸入法的程式會整個卡死
-  （log：`%LOCALAPPDATA%\PIME\Log\PIMELauncher.log` 的 `Backend is not found for text service`），要登出再登入才好；只重開 Python 後端沒用。
-  setup.ps1 的 `Restart-Pime` 用 `/quit` 關掉它，再用一次性排程以登入使用者的一般權限重開（安裝程式是系統管理員，直接開的啟動器一般程式連不上）。
-- **PIME 預設安裝不含 cinbase**（倉頡等模組），中／英圖示要自帶（`windows/pime/cjlearn/icons/`）。
-
-VM 測試（快照：`base4` 全新中文 Windows＋瀏覽器、`pime-only` 已有 PIME、`installed` 已裝過）：
-全新 4 回合、已有 PIME 3 回合、重裝 3 回合，全程每 0.5 秒對所有視窗送訊息偵測卡死，裝完不登出就在新記事本打出「我」，10/10 通過；
-同情境用沒修啟動器的版本對照，記事本卡死。腳本與做法在 `windows/vmtest/`。
-
-手動安裝（Win11 測試機，PIME 1.3.0、內建 Python 3.8.10 32 位元；2026-10-31 裝）：
-1. 把 `windows/build/cjlearn` 複製到 `C:\Program Files (x86)\PIME\python\input_methods\cjlearn`
-2. 系統管理員執行 `System32\regsvr32 /s PIME\x64\PIMETextService.dll` 與 `SysWOW64\regsvr32 /s PIME\x86\PIMETextService.dll`（註冊時會掃 input_methods 的 ime.json）
-3. 結束 PIME 的 `python.exe server.py`，PIMELauncher 會自動重開並載入新輸入法
-學習資料：`%APPDATA%\PIME\cjlearn\user.db`。移除：刪掉該目錄後重做第 2、3 步。
-在 Windows 上冒煙測試：`PIME\python\python3\python.exe windows\smoke_pime.py <含 input_methods\cjlearn 的目錄> <PIME\python>`
-
-## Mac 版（InputMethodKit）
-
-`mac/Core/`：核心的 Swift 移植（Model、Composer），`mac/App/`：IMK 外殼（KeyMap 用實體鍵位碼、自繪候選窗、Shift／Ctrl 處理）。
-model.db／user.db 格式與 Linux／Windows 相同；學習資料在 `~/Library/Application Support/CangjieLearn/user.db`。
-
-```text
-mac/build.sh                 # 在 Mac 上：編譯 → ~/Library/Input Methods/CangjieLearn.app → 註冊（需先把 data/model.db 帶過去）
-python3 mac/tests/gen_cases.py   # 產生差分測試 cases.json（要在 Mac 上跑：log1p 在 glibc 與 macOS libm 差 1 ulp，Linux 產生的預期值會有 279/3000 不符）
-```
-- 差分測試：`swiftc -O mac/Core/*.swift mac/tests/DiffTest.swift -o difftest && ./difftest data/model.db mac/tests/cases.json <暫存 user.db>`，3000 組隨機按鍵與 Python 版逐步比對（2026-11-03：3000/3000）。
-- 外殼測試：`mac/tests/ShellTest.swift` 用假輸入框＋合成 NSEvent 驅動控制器（編譯指令寫在檔頭；IMKInputController 建立時 client 要給 nil，假 client 只在呼叫時傳）。2026-11-03：19/19，把逗號鍵位改錯會抓到。
-- 從 ssh 執行 `TISEnableInputSource` 不會生效，第一次要在「系統設定 → 鍵盤 → 輸入方式」手動加入。
-- 開發機 Mac 測試機 `~/cjlearn-dev/`。
+Windows 是 Microsoft 的商標，本專案與 Microsoft 無關。
