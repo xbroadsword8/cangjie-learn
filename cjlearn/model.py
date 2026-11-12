@@ -15,6 +15,7 @@ W_USER_UNI = 2.0                         # 使用者選過此字的次數
 CORRECTION_BOOST = 3                     # 不是第一候選卻被選中：算 3 次（使用者在糾正排序）
 W_CONTAINED = 0.3                        # 單字頻＝單字詞頻＋0.3×含此字的詞總頻
 MAX_COMPLETIONS = 60
+DECIDE_RATIO = 10                        # 上文 bigram 比同碼其他字的 bigram 大這麼多倍 → 這次選字由上文決定
 
 
 class Candidate:
@@ -41,6 +42,8 @@ class Model:
         self._user_bi = dict(self.user.execute("select s, n from bi"))
         self._peer_uni, self._peer_bi = {}, {}   # 其他電腦學到的次數（sync.py），選字時與自己的相加
         self._ngram_cache = {}
+        self._decides_cache = {}
+        self._explained = self._count_explained()
 
     # --- 查詢 ---
     def _ngram(self, s):
@@ -53,6 +56,34 @@ class Model:
             self._ngram_cache[s] = v
         return v
 
+    def _decides(self, s):
+        """bigram s（前一字＋此字）在詞庫裡遠多於同碼其他字的同位置 bigram：選這個字是上文決定的，
+        不代表使用者偏好這個字（例：「自己」的己、「而已」的已）。"""
+        v = self._decides_cache.get(s)
+        if v is None:
+            p, ch = s[:-1], s[-1]
+            f = self._ngram(s)
+            v = f > 0
+            if v:
+                for (code,) in self.db.execute("select code from code where ch=?", (ch,)).fetchall():
+                    for (r,) in self.db.execute("select ch from code where code=?", (code,)).fetchall():
+                        if r != ch and self._ngram(p + r) * DECIDE_RATIO > f:
+                            v = False
+                            break
+                    if not v:
+                        break
+            self._decides_cache[s] = v
+        return v
+
+    def _count_explained(self):
+        """每個字有幾次學習是上文決定的；單字偏好扣掉這部分，免得「自己」打多了，句首的「已經」也變成「己經」。"""
+        e = {}
+        for d in (self._user_bi, self._peer_bi):
+            for s, n in d.items():
+                if self._decides(s):
+                    e[s[-1]] = e.get(s[-1], 0) + n
+        return e
+
     def score(self, ch, ctx):
         s = math.log1p(self._uni.get(ch, 0))
         for k in (1, 2, 3):
@@ -63,7 +94,8 @@ class Model:
         if ctx:
             k = ctx[-1] + ch
             s += W_USER_BI * math.log1p(self._user_bi.get(k, 0) + self._peer_bi.get(k, 0))
-        s += W_USER_UNI * math.log1p(self._user_uni.get(ch, 0) + self._peer_uni.get(ch, 0))
+        u = self._user_uni.get(ch, 0) + self._peer_uni.get(ch, 0) - self._explained.get(ch, 0)
+        s += W_USER_UNI * math.log1p(max(0, u))
         return s
 
     def candidates(self, code, ctx=""):
@@ -88,6 +120,7 @@ class Model:
 
     def set_peers(self, uni, bi):
         self._peer_uni, self._peer_bi = uni, bi
+        self._explained = self._count_explained()
 
     # --- 學習 ---
     def learn(self, ch, prev="", corrected=False):
@@ -97,5 +130,7 @@ class Model:
         if prev:
             s = prev[-1] + ch
             self._user_bi[s] = self._user_bi.get(s, 0) + n
+            if self._decides(s):
+                self._explained[ch] = self._explained.get(ch, 0) + n
             self.user.execute("insert into bi values (?,?) on conflict(s) do update set n=n+?", (s, n, n))
         self.user.commit()

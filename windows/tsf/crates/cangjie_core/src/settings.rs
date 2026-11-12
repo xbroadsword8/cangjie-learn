@@ -6,13 +6,14 @@ use std::path::Path;
 pub struct Settings {
     pub clear_on_error: bool,
     pub full_punct: bool,
+    pub full_shape: bool,
     pub sync_remote: String,
     pub sync_name: String,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Settings { clear_on_error: true, full_punct: false, sync_remote: String::new(), sync_name: String::new() }
+        Settings { clear_on_error: true, full_punct: false, full_shape: false, sync_remote: String::new(), sync_name: String::new() }
     }
 }
 
@@ -23,6 +24,7 @@ pub fn load(path: impl AsRef<Path>) -> Settings {
     let Ok(Value::Object(m)) = serde_json::from_str::<Value>(&text) else { return s };
     if let Some(Value::Bool(b)) = m.get("clear_on_error") { s.clear_on_error = *b; }
     if let Some(Value::Bool(b)) = m.get("full_punct") { s.full_punct = *b; }
+    if let Some(Value::Bool(b)) = m.get("full_shape") { s.full_shape = *b; }
     if let Some(Value::String(v)) = m.get("sync_remote") { s.sync_remote = v.clone(); }
     if let Some(Value::String(v)) = m.get("sync_name") { s.sync_name = v.clone(); }
     s
@@ -37,6 +39,7 @@ pub fn save(path: impl AsRef<Path>, s: &Settings) -> std::io::Result<()> {
     let mut m = Map::new();
     m.insert("clear_on_error".into(), Value::Bool(s.clear_on_error));
     m.insert("full_punct".into(), Value::Bool(s.full_punct));
+    m.insert("full_shape".into(), Value::Bool(s.full_shape));
     m.insert("sync_remote".into(), Value::String(s.sync_remote.clone()));
     m.insert("sync_name".into(), Value::String(s.sync_name.clone()));
     let mut buf = Vec::new();

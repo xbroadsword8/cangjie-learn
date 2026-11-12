@@ -56,6 +56,7 @@ END
 102                     ICON                    "mainicon2.ico"
 IDI_CHI                 ICON                    "cjlearn_chi.ico"
 IDI_ENG                 ICON                    "cjlearn_eng.ico"
+IDI_CJ                  ICON                    "cjlearn_cj.ico"
 
 /////////////////////////////////////////////////////////////////////////////
 //
@@ -107,6 +108,7 @@ BEGIN
     BEGIN
         MENUITEM "打錯碼按空白清掉",                   ID_CLEAR_ON_ERROR
         MENUITEM "標點直接出全形（，。？！）",             ID_FULL_PUNCT
+        MENUITEM "全形英數（Shift＋空白切換）",           ID_FULL_SHAPE
     END
 END
 

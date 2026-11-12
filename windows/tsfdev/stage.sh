@@ -15,7 +15,7 @@ rm -rf "$OUT"; mkdir -p "$OUT/x64" "$OUT/x86"
 cp "$CARGO_TARGET_DIR/x86_64-pc-windows-gnu/release/cjlearn_tip.dll" "$OUT/x64/"
 cp "$CARGO_TARGET_DIR/i686-pc-windows-gnu/release/cjlearn_tip.dll" "$OUT/x86/"
 cp "$CARGO_TARGET_DIR/x86_64-pc-windows-gnu/release/tsfreg.exe" "$OUT/"
-cp "$ROOT/windows/pime/cjlearn/icons/chi_half_capsoff.ico" "$OUT/cjlearn.ico"
+cp "$ROOT/windows/tsf/tip/rc/cjlearn_cj.ico" "$OUT/cjlearn.ico"
 [ -f "$ROOT/data/model.db" ] || { echo "缺 data/model.db（先跑 ./install.sh 或 scripts/build_data.py）"; exit 1; }
 cp "$ROOT/data/model.db" "$OUT/"
 # Windows PowerShell 5 要 BOM 才讀得懂 UTF-8 中文

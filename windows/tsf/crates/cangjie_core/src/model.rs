@@ -9,6 +9,8 @@ pub const W_USER_UNI: f64 = 2.0;
 pub const CORRECTION_BOOST: i64 = 3;
 pub const W_CONTAINED: f64 = 0.3; // Python 保留常數（build_data 用）
 pub const MAX_COMPLETIONS: usize = 60;
+/// 上文 bigram 比同碼其他字的 bigram 大這麼多倍 → 這次選字由上文決定
+pub const DECIDE_RATIO: i64 = 10;
 
 fn w_ngram(k: usize) -> f64 {
     match k { 1 => 1.5, 2 => 2.0, _ => 2.5 }
@@ -39,6 +41,9 @@ pub struct Model {
     peer_uni: HashMap<String, i64>,
     peer_bi: HashMap<String, i64>,
     ngram_cache: HashMap<String, i64>,
+    decides_cache: HashMap<String, bool>,
+    /// 每個字有幾次學習是上文決定的（見 decides）；單字偏好扣掉這部分
+    explained: HashMap<String, i64>,
 }
 
 fn pairs(c: &Connection, sql: &str) -> rusqlite::Result<HashMap<String, i64>> {
@@ -61,10 +66,13 @@ impl Model {
         )?;
         let user_uni = pairs(&user, "select ch, n from uni")?;
         let user_bi = pairs(&user, "select s, n from bi")?;
-        Ok(Model {
+        let mut m = Model {
             db, user, uni, user_uni, user_bi,
             peer_uni: HashMap::new(), peer_bi: HashMap::new(), ngram_cache: HashMap::new(),
-        })
+            decides_cache: HashMap::new(), explained: HashMap::new(),
+        };
+        m.explained = m.count_explained();
+        Ok(m)
     }
 
     fn ngram(&mut self, s: &str) -> i64 {
@@ -76,6 +84,49 @@ impl Model {
         if self.ngram_cache.len() > 200_000 { self.ngram_cache.clear(); }
         self.ngram_cache.insert(s.to_string(), v);
         v
+    }
+
+    fn col(&self, sql: &str, arg: &str) -> Vec<String> {
+        let Ok(mut st) = self.db.prepare(sql) else { return vec![] };
+        let out = match st.query_map([arg], |r| r.get::<_, String>(0)) {
+            Ok(it) => it.filter_map(Result::ok).collect(),
+            Err(_) => vec![],
+        };
+        out
+    }
+
+    /// bigram s（前一字＋此字）在詞庫裡遠多於同碼其他字的同位置 bigram：選這個字是上文決定的，
+    /// 不代表使用者偏好這個字（例：「自己」的己、「而已」的已）。
+    fn decides(&mut self, s: &str) -> bool {
+        if let Some(v) = self.decides_cache.get(s) { return *v; }
+        let Some((idx, _)) = s.char_indices().last() else { return false };
+        let (p, ch) = (&s[..idx], &s[idx..]);
+        let f = self.ngram(s);
+        let mut v = f > 0;
+        if v {
+            'outer: for code in self.col("select code from code where ch=?", ch) {
+                for r in self.col("select ch from code where code=?", &code) {
+                    if r != ch && self.ngram(&format!("{p}{r}")) * DECIDE_RATIO > f {
+                        v = false;
+                        break 'outer;
+                    }
+                }
+            }
+        }
+        self.decides_cache.insert(s.to_string(), v);
+        v
+    }
+
+    fn count_explained(&mut self) -> HashMap<String, i64> {
+        let mut e = HashMap::new();
+        let all: Vec<(String, i64)> = self.user_bi.iter().chain(self.peer_bi.iter())
+            .map(|(k, v)| (k.clone(), *v)).collect();
+        for (s, n) in all {
+            if self.decides(&s) {
+                if let Some(ch) = s.chars().last() { *e.entry(ch.to_string()).or_insert(0) += n; }
+            }
+        }
+        e
     }
 
     pub fn score(&mut self, ch: &str, ctx: &str) -> f64 {
@@ -93,8 +144,9 @@ impl Model {
             let v = self.user_bi.get(&k).unwrap_or(&0) + self.peer_bi.get(&k).unwrap_or(&0);
             s += W_USER_BI * (v as f64).ln_1p();
         }
-        let v = self.user_uni.get(ch).unwrap_or(&0) + self.peer_uni.get(ch).unwrap_or(&0);
-        s += W_USER_UNI * (v as f64).ln_1p();
+        let v = self.user_uni.get(ch).unwrap_or(&0) + self.peer_uni.get(ch).unwrap_or(&0)
+            - self.explained.get(ch).unwrap_or(&0);
+        s += W_USER_UNI * (v.max(0) as f64).ln_1p();
         s
     }
 
@@ -139,6 +191,7 @@ impl Model {
     pub fn set_peers(&mut self, uni: HashMap<String, i64>, bi: HashMap<String, i64>) {
         self.peer_uni = uni;
         self.peer_bi = bi;
+        self.explained = self.count_explained();
     }
 
     pub fn learn(&mut self, ch: &str, prev: &str, corrected: bool) {
@@ -149,6 +202,7 @@ impl Model {
         if !prev.is_empty() {
             let s = format!("{}{}", tail_chars(prev, 1), ch);
             *self.user_bi.entry(s.clone()).or_insert(0) += n;
+            if self.decides(&s) { *self.explained.entry(ch.to_string()).or_insert(0) += n; }
             let _ = self.user.execute(
                 "insert into bi values (?1,?2) on conflict(s) do update set n=n+?2", params![s, n]);
         }

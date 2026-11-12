@@ -50,6 +50,22 @@ fn context_break(key: &str) -> bool {
         | "Page_Up" | "Page_Down" | "Delete" | "Escape")
 }
 
+/// 鍵對應的半形 ASCII 字元（字母、數字、標點、空白）；其他鍵 None。
+fn ascii_of(key: &str) -> Option<char> {
+    if key == "space" { return Some(' '); }
+    if let Some(p) = ascii_punct(key) { return p.chars().next(); }
+    single(key).filter(|c| c.is_ascii_graphic())
+}
+
+/// 半形 → 全形（空白 → U+3000，! 到 ~ → U+FF01 到 U+FF5E）。
+pub fn to_full(c: char) -> char {
+    match c {
+        ' ' => '\u{3000}',
+        '!'..='~' => char::from_u32(c as u32 + 0xFEE0).unwrap_or(c),
+        _ => c,
+    }
+}
+
 /// 單一字元鍵（Python 的 len(key)==1，以碼點計）。
 fn single(key: &str) -> Option<char> {
     let mut it = key.chars();
@@ -78,6 +94,8 @@ pub struct Composer {
     pub ctx: String,
     pub clear_on_error: bool,
     pub full_punct: bool,
+    /// 全形英數（Shift＋空白切換）：字母、數字、符號、空白都送全形。
+    pub full_shape: bool,
     shift_alone: bool,
 }
 
@@ -85,7 +103,7 @@ impl Composer {
     pub fn new(model: Arc<Mutex<Model>>) -> Self {
         Composer {
             model, chinese: true, code: String::new(), cands: vec![], page: 0, cursor: 0,
-            ctx: String::new(), clear_on_error: true, full_punct: false, shift_alone: false,
+            ctx: String::new(), clear_on_error: true, full_punct: false, full_shape: false, shift_alone: false,
         }
     }
 
@@ -134,6 +152,11 @@ impl Composer {
         ch
     }
 
+    /// 全形模式時把半形英數轉成全形。
+    fn shaped(&self, s: &str) -> String {
+        if self.full_shape { s.chars().map(to_full).collect() } else { s.to_string() }
+    }
+
     fn flush(&mut self) -> String {
         if self.code.is_empty() { return String::new(); }
         if self.cands.is_empty() {
@@ -144,7 +167,7 @@ impl Composer {
     }
 
     // --- 主入口 ---
-    pub fn process(&mut self, key: &str, ctrl: bool, _shift: bool, alt: bool, release: bool) -> KeyResult {
+    pub fn process(&mut self, key: &str, ctrl: bool, shift: bool, alt: bool, release: bool) -> KeyResult {
         if key == "Shift_L" || key == "Shift_R" {
             if !release {
                 self.shift_alone = !(ctrl || alt);
@@ -163,6 +186,12 @@ impl Composer {
         if release { return res(false, ""); }
         self.shift_alone = false;
 
+        // Shift＋空白：切換全形／半形（中英模式都可以；組到一半的字碼保留）
+        if key == "space" && shift && !ctrl && !alt {
+            self.full_shape = !self.full_shape;
+            return res(true, "");
+        }
+
         if ctrl && !alt {
             if let Some(p) = cjk_punct(key) {
                 let out = self.flush() + p;
@@ -173,6 +202,9 @@ impl Composer {
 
         if !self.chinese {
             if context_break(key) { self.ctx.clear(); }
+            if self.full_shape && !ctrl && !alt {
+                if let Some(c) = ascii_of(key) { return res(true, to_full(c).to_string()); }
+            }
             return res(false, "");
         }
 
@@ -196,6 +228,13 @@ impl Composer {
 
         if !self.code.is_empty() {
             return self.process_composing(key);
+        }
+
+        if self.full_shape {
+            if let Some(c) = ascii_of(key) {
+                if !c.is_ascii_digit() { self.ctx.clear(); }
+                return res(true, to_full(c).to_string());
+            }
         }
 
         if key == "BackSpace" {
@@ -238,7 +277,7 @@ impl Composer {
                 let raw = std::mem::take(&mut self.code);
                 self.clear();
                 self.ctx.clear();
-                return res(true, raw);
+                return res(true, self.shaped(&raw));
             }
             "Page_Down" | "equal" | "KP_Page_Down" => {
                 if (self.page + 1) * PAGE < self.cands.len() {
@@ -275,19 +314,22 @@ impl Composer {
             _ => {}
         }
         if let Some(p) = ascii_punct(key) {
-            let out = self.flush() + p;
+            let out = self.flush() + &self.shaped(p);
             self.ctx.clear();
             return res(true, out);
         }
         if let Some(c) = one {
             if c.is_ascii_uppercase() {
-                let out = self.flush() + key;
+                let out = self.flush() + &self.shaped(key);
                 self.ctx.clear();
                 return res(true, out);
             }
         }
         let out = self.flush();
         self.ctx.clear();
+        if self.full_shape {
+            if let Some(c) = ascii_of(key) { return res(true, out + &to_full(c).to_string()); }
+        }
         res(false, out)
     }
 }

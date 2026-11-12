@@ -8,7 +8,7 @@ use windows_core::PCWSTR;
 
 use crate::{
     com::G_HINSTANCE,
-    text_service::resources::{IDI_CHI, IDI_ENG},
+    text_service::resources::{IDI_CHI, IDI_CJ, IDI_ENG},
 };
 
 /// 語言列／系統匣的中、英模式圖示（與 PIME 版同一組圖）。
@@ -16,6 +16,7 @@ use crate::{
 pub(crate) struct LangIconSet {
     pub(crate) chi: HICON,
     pub(crate) eng: HICON,
+    pub(crate) cj: HICON,
 }
 
 impl LangIconSet {
@@ -24,6 +25,7 @@ impl LangIconSet {
         LangIconSet {
             chi: load_icon(g_hinstance, IDI_CHI),
             eng: load_icon(g_hinstance, IDI_ENG),
+            cj: load_icon(g_hinstance, IDI_CJ),
         }
     }
 }

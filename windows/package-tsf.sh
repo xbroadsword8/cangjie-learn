@@ -25,7 +25,7 @@ STAGE="$ROOT/windows/dist/stage-tsf"
 rm -rf "$STAGE"; mkdir -p "$STAGE/x64" "$STAGE/x86"
 cp "$R64/cjlearn_tip.dll" "$STAGE/x64/"; cp "$R32/cjlearn_tip.dll" "$STAGE/x86/"
 cp "$R64/tsfreg.exe" "$R64/cjlearn-sync.exe" "$ROOT/data/model.db" "$MINGIT" "$STAGE/"
-cp "$ROOT/windows/pime/cjlearn/icons/chi_half_capsoff.ico" "$STAGE/cjlearn.ico"
+cp "$ROOT/windows/tsf/tip/rc/cjlearn_cj.ico" "$STAGE/cjlearn.ico"
 # Windows PowerShell 5.1 要 UTF-8 BOM 才讀得懂中文；行尾改 CRLF
 printf '\xef\xbb\xbf' > "$STAGE/setup-tsf.ps1"; sed 's/$/\r/' "$ROOT/windows/installer/setup-tsf.ps1" >> "$STAGE/setup-tsf.ps1"
 OUT="$ROOT/windows/dist/cangjie-learn-setup-$(date +%Y%m%d).exe"

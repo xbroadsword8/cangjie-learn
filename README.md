@@ -2,8 +2,11 @@
 
 倉頡三代碼表（取自 ibus-table），改了兩件事：
 
-1. **選字看上下文、會學習**：候選字依「前 1–3 個字＋候選字是否組成常用詞」（libchewing 詞頻）＋「你自己的用字紀錄」排序。完整碼命中的字永遠排在補完候選前面。手動選了非第一候選＝糾正，一次記 3 筆。學習資料存在 `~/.local/share/cangjie-learn/user.db`。
+1. **選字看上下文、會學習**：候選字依「前 1–3 個字＋候選字是否組成常用詞」（libchewing 詞頻）＋「你自己的用字紀錄」排序。完整碼命中的字永遠排在補完候選前面。手動選了非第一候選＝糾正，一次記 3 筆。上文就能決定的選字（「自己」的己、「而已」的已：詞庫裡該 bigram 比同碼其他字多 10 倍以上）只記成 bigram，不算進單字偏好，免得「自己」打多了，句首的「已經」也變成「己經」。學習資料存在 `~/.local/share/cangjie-learn/user.db`。
 2. **標點仿酷倉**：中文模式下標點鍵預設出半形，**加 Ctrl 才出中文標點**。單按一下 Shift 切換中／英。
+
+支援 Linux（IBus）、Windows（TSF，Windows 10／11）、macOS。Windows 安裝檔在 [Releases](../../releases)。
+安裝檔沒有數位簽章，第一次執行時 SmartScreen 會顯示「不明發行者」，按「其他資訊 → 仍要執行」即可。
 
 ## Ctrl＋標點對照
 
@@ -25,7 +28,7 @@ Ctrl＋標點的字會在**放開 Ctrl 後約 0.03 秒**才出現：Chrome 會�
 
 ## 其他按鍵
 
-空白鍵送出第一候選；1–9 選字；`-`／`=`／PageUp／PageDown 翻頁；方向鍵移動游標；Enter 把打到一半的碼當英文字母送出；Esc 取消。補完候選後面的灰字是還沒打的部件。
+空白鍵送出第一候選；1–9 選字；`-`／`=`／PageUp／PageDown 翻頁；方向鍵移動游標；Enter 把打到一半的碼當英文字母送出；Esc 取消。補完候選後面的橘色字是還沒打的部件。
 
 **打錯碼按空白清掉**（預設開）：碼打錯、沒有任何候選字時，按空白或數字鍵直接清掉字碼（鍵不外漏），不會停在那裡。
 開關：Linux 在 IBus 輸入法選單、Windows 在工作列「中／英」圖示按右鍵、Mac 在選單列輸入法選單。
@@ -63,6 +66,21 @@ systemd drop-in `~/.config/systemd/user/org.freedesktop.IBus.session.GNOME.servi
 - 碼表：`/usr/share/ibus-table/tables/cangjie3.db`
 - 詞頻：libchewing-data `tsi.csv`／`word.csv`（LGPL-2.1-or-later），放 `data/raw/`；`scripts/build_data.py` 產生 `data/model.db`
 
+## 致謝與授權
+
+這個輸入法是站在許多人的成果上做出來的，謝謝：
+
+- **朱邦復先生**：發明倉頡輸入法，並放棄專利，讓大家都能自由使用。
+- **倉頡之友‧馬來西亞（chinesecj.com）** 與 ibus-table-chinese 的維護者（Yu Yuwei、Caius Chance、Ding-Yi Chen、Mike FABIAN 等人）：整理並開放倉頡三代碼表。本專案的碼表取自 [ibus-table-chinese](https://github.com/mike-fabian/ibus-table-chinese)。
+- **新酷音（Chewing）專案團隊**：
+  - Windows 版的 TSF 外殼改自 [windows-chewing-tsf](https://github.com/chewing/windows-chewing-tsf)（GPL-3.0-or-later）。我們把注音引擎換成自己的倉頡核心，其餘的視窗、圖示、安裝與相容性處理大多沿用他們多年累積的成果。原版權聲明與授權全文保留在 `windows/tsf/`。
+  - 選字用的詞頻來自 [libchewing-data](https://github.com/chewing/libchewing-data)（LGPL-2.1-or-later）。
+- **PIME 專案**（[EasyIME/PIME](https://github.com/EasyIME/PIME)）：舊版 Windows 輸入法（`windows/pime/`）跑在 PIME 上。
+- **酷倉**：「加 Ctrl 才出中文標點」的習慣是照酷倉的用法做的。
+- 安裝程式用 [NSIS](https://nsis.sourceforge.io/) 打包，內附 [MinGit](https://github.com/git-for-windows/git)（Git for Windows，GPL-2.0）供學習資料同步使用。
+
+授權：**GPL-3.0**（全文見 `LICENSE`）。依 GPL，修改後再散佈也必須公開原始碼並沿用同一授權。
+
 紀錄：引擎 log 在 `~/.cache/cangjie-learn/engine.log`。
 
 ## Windows 版（TSF 原生，2026-11-11 起；取代下方 PIME 版）
@@ -72,13 +90,19 @@ PIME 版在 Word 拖尺規後整個打不出中文（Win11 測試機 穩定重�
 
 - `windows/tsf/`：上游 workspace（匯入基準 commit `cadfdb2`）。`crates/cangjie_core`＝核心的 Rust 移植（composer／model／settings／keymap／sync，
   差分測試讀 `mac/tests/cases.json` 與 Python 逐步比對）＋`cjlearn-sync`（同步程式，輸出與 Python 版逐位元組相同，`tests/test_sync_rust.py`）；
-  `tip/src/text_service/cangjie.rs`＝外殼（按鍵、組字、候選灰色字根、右鍵選單）。DLL 名 `cjlearn_tip.dll`，CLSID `{979B58A7-…}`、profile `{C68442D3-…}`。
+  `tip/src/text_service/cangjie.rs`＝外殼（按鍵、組字、候選橘色字根提示、右鍵選單）。DLL 名 `cjlearn_tip.dll`，CLSID `{979B58A7-…}`、profile `{C68442D3-…}`。
 - 行為同 PIME 版；另外 Win 鍵按著時不處理任何鍵（原版新酷音 Win+Shift+S 截圖會誤切英文）。資料沿用 `%APPDATA%\PIME\cjlearn\`，model.db 讀 DLL 旁邊；
   DLL 旁有 `data_dir.txt` 時改用它寫的資料夾（測試用，隔開真正的學習資料與同步）。
+- TSF 版多了**全形英數**（2026-11-12）：Shift＋空白切換（中英模式都可），全形時字母、數字、符號、空白都轉成 U+FF01–FF5E／U+3000（中文模式小寫字母照常組字）；
+  設定存 `settings.json` 的 `full_shape`，右鍵選單可勾。Ctrl＋標點、「標點直接出全形」優先於它。
+- 有些程式換欄位時會自己把鍵盤 OpenClose 設成 0（2026-11-12 Win11 測試機 按鍵紀錄：按 Enter 換焦點後就被關掉，之後 Shift 全無反應、卡在英文）。關閉時圖示顯示「英」，**單按 Shift 會重新打開並回到中文**（VM 用 Ctrl＋空白模擬驗過）。
+- ⚠ **沙箱程式讀不到學習資料夾**（Win11 開始功能表的搜尋 SearchHost 是 AppContainer）。交給 SQLite 開的話它遇到拒絕存取會重試好幾秒，舊版每次切到搜尋就卡住、打不出字（2026-11-12 Win11 測試機）。現在先用 `read_dir` 判斷，讀不到就直接用 `:memory:` 學習資料（照詞庫選字、學到的不存），按鍵紀錄改寫到該程式自己的 `%TEMP%\cjlearn-keylog.txt`。VM 用 `data_dir.txt`＋icacls 拒絕存取模擬驗過。
+- 除錯用按鍵紀錄：學習資料夾放一個空檔 `keylog.on`，之後新開的程式會把按鍵事件寫到同資料夾 `keylog.txt`（只記非英數鍵的鍵碼與 Shift/Ctrl/Alt/Win、中英狀態，不記打了哪個字）。
 - 這台 Linux 交叉編譯（mingw，不需 Visual Studio）：`windows/package-tsf.sh` → `windows/dist/cangjie-learn-setup-<日期>.exe`（NSIS＋`windows/installer/setup-tsf.ps1`，附 MinGit，不含 PIME）。
   開發時直接裝到測試機：`DEPLOY=<ssh 主機> windows/tsfdev/stage.sh <暫存資料夾>`（`devinstall.ps1`，可加 `DEVARGS="-DataDir ..."`）。
 - 安裝程式：DLL 檔名帶時間戳（舊版被程式載入時鎖住）、被佔用的檔案排到開機刪；自動移除舊 PIME 版倉頡學習版（PIME 與酷倉保留），
   ⚠ **移除舊版時不能重開 PIME**：正在用舊版的程式會因 `Backend is not found` 卡住一兩分鐘（2026-11-11 VM 重現），所以只拿掉 TSF 註冊與 `ime.json`。
+- ⚠ **Google Drive 會把安裝程式標成病毒、擋下載**（2026-11-12：20261111／20261112 版的 exe 與一般 zip 都被擋，API 回 `cannotDownloadAbusiveFile`；Win11 測試機 Defender 掃描乾淨）。發佈時改放**有密碼的 zip**（Drive 掃不進去，實測可下載）；密碼寫在 `說明.txt`。
 - 實機測試腳本：`windows/wordtest/tsfsmoke.ps1`（Word 逐項打字）、`wordtest.ps1 -Tip`（拖尺規）；安裝程式 VM 測試同下方 `windows/vmtest/`（`TIP=` 指定要測的輸入法）。
 
 ## Windows 版（PIME，舊版）

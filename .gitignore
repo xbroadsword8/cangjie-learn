@@ -8,3 +8,5 @@ mac/build/
 mac/tests/cases.json
 # 官方安裝檔：package.sh 會下載並驗 sha256
 windows/vendor/
+# 個人素材，不入版控
+uploads/

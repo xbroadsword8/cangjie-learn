@@ -166,3 +166,22 @@ def test_settings_roundtrip(tmp_path):
     assert settings.load(p)["clear_on_error"] is False
     p.write_text('{"clear_on_error": "no", "x": 1}')
     assert settings.load(p) == settings.DEFAULTS                 # 型別不對、未知鍵 → 忽略
+
+
+def test_context_decided_learning_not_char_preference(tmp_path):
+    """打很多次「自己」不該讓句首／無上文的「已經」變成「己經」。"""
+    m = Model(user_db=tmp_path / "user.db")
+    for _ in range(12):
+        m.learn("己", "自")
+    for _ in range(3):
+        m.learn("已", "前")
+    assert m.candidates("su", "")[0].ch == "已"
+    assert m.candidates("su", "我")[0].ch == "已"
+    assert m.candidates("su", "自")[0].ch == "己"
+    # 重新開啟（從 user.db 讀回）結果一樣
+    m2 = Model(user_db=tmp_path / "user.db")
+    assert m2.candidates("su", "")[0].ch == "已"
+    # 沒有上文可解釋的選字照樣算偏好
+    for _ in range(5):
+        m2.learn("己", "")
+    assert m2.candidates("su", "")[0].ch == "己"

@@ -79,9 +79,9 @@ const HIGHLIGHT_BG: &str = "000000FF";
 const NUMBER_FG: &str = "0000FFFF";
 const BORDER: &str = "D6D9DBFF";
 const NOTIFY_BG: &str = "FCFBDAFF";
-/// 補完候選後面灰色字根的顏色（一般／被選中）
-const HINT_FG: &str = "8C8C8CFF";
-const HINT_HIGHLIGHT_FG: &str = "BFBFBFFF";
+/// 補完候選後面字根提示的顏色（橘色，與黑字、藍色序號區分；一般／被選中）
+const HINT_FG: &str = "C2410CFF";
+const HINT_HIGHLIGHT_FG: &str = "FDBA74FF";
 
 // --- 行程內共用的狀態：學習資料、選項、同步 ---
 
@@ -161,13 +161,29 @@ fn model_db_path() -> Option<PathBuf> {
     Some(dll_dir()?.join("model.db"))
 }
 
+/// 學習資料夾讀不到（沙箱程式，例如 Win11 開始功能表的搜尋 SearchHost）。
+/// 要先用一般檔案操作判斷：交給 SQLite 開的話，它遇到「拒絕存取」會重試好幾秒（防毒軟體對策），
+/// 程式在那段時間打不出字。資料夾還不存在＝第一次用，不算讀不到。
+fn data_dir_denied() -> bool {
+    match std::fs::read_dir(data_dir()) {
+        Ok(_) => false,
+        Err(e) => e.kind() != std::io::ErrorKind::NotFound,
+    }
+}
+
 /// 取得（必要時開啟）共用 Model，順便檢查同步資料夾有沒有更新。
 fn shared_model() -> Option<Arc<Mutex<Model>>> {
     let mut guard = SHARED.lock().ok()?;
     if guard.is_none() {
         let dir = data_dir();
         let db = model_db_path()?;
-        match Model::open(&db, dir.join("user.db")) {
+        let denied = data_dir_denied();
+        let opened = if denied {
+            Err(format!("access denied: {}", dir.display()))
+        } else {
+            Model::open(&db, dir.join("user.db")).map_err(|e| e.to_string())
+        };
+        match opened {
             Ok(model) => {
                 info!("model opened: {}", db.display());
                 *guard = Some(Shared {
@@ -176,14 +192,65 @@ fn shared_model() -> Option<Arc<Mutex<Model>>> {
                 });
             }
             Err(error) => {
-                error!("unable to open model {}: {error}", db.display());
-                return None;
+                // 開始功能表的搜尋（Win11 SearchHost）等沙箱程式讀不到 %APPDATA% 的學習資料：
+                // 改用記憶體裡的空白學習資料，至少能照詞庫選字打中文（學到的不存檔）。
+                error!("unable to open user data, falling back to memory: {error}");
+                keylog(format_args!("user.db open failed ({error}); using :memory:"));
+                match Model::open(&db, ":memory:") {
+                    Ok(model) => {
+                        *guard = Some(Shared {
+                            model: Arc::new(Mutex::new(model)),
+                            peers: PeerWatcher::new(dir, PEER_POLL_INTERVAL),
+                        });
+                    }
+                    Err(error) => {
+                        error!("unable to open model {}: {error}", db.display());
+                        keylog(format_args!("model.db open failed ({error})"));
+                        return None;
+                    }
+                }
             }
         }
     }
     let shared = guard.as_mut()?;
     shared.peers.poll(&shared.model);
     Some(shared.model.clone())
+}
+
+/// 除錯用按鍵紀錄：學習資料夾裡有 keylog.on 時才寫 keylog.txt（程式啟動時決定）。
+/// 只記鍵碼與狀態；字母、數字一律記成 vk=key，不記打了哪個字、也不記送出的文字。
+/// 沙箱程式（讀不到學習資料夾）改寫到它自己的暫存資料夾，除錯時從那裡撈。
+static KEYLOG: LazyLock<Option<PathBuf>> = LazyLock::new(|| {
+    let d = data_dir();
+    if d.join("keylog.on").exists() {
+        Some(d.join("keylog.txt"))
+    } else if data_dir_denied() {
+        Some(std::env::temp_dir().join("cjlearn-keylog.txt"))
+    } else {
+        None
+    }
+});
+
+fn keylog(line: std::fmt::Arguments) {
+    let Some(path) = KEYLOG.as_ref() else { return };
+    use std::io::Write;
+    if std::fs::metadata(path).is_ok_and(|m| m.len() > 4_000_000) {
+        let _ = std::fs::rename(path, path.with_extension("old.txt"));
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let _ = writeln!(f, "{ms} pid={} {line}", std::process::id());
+    }
+}
+
+fn vk_label(vk: u16) -> String {
+    match vk {
+        0x30..=0x39 | 0x41..=0x5A | 0x60..=0x69 => "key".into(),
+        _ => format!("{vk:#04x}"),
+    }
 }
 
 fn reload_settings() -> Settings {
@@ -238,6 +305,12 @@ pub(super) struct CangjieTextService {
     /// OnTestKeyDown 已經餵給核心並吃掉的鍵，等 OnKeyDown 輸出。
     pending_down: Option<(u16, KeyResult)>,
     last_test_down: Option<(u16, Instant)>,
+    /// Shift＋空白剛切換全形／半形，OnKeyDown 時顯示提示。
+    shape_changed: bool,
+    /// 鍵盤被程式關閉（OpenClose＝0）時按下了 Shift、之後沒按別的鍵
+    closed_shift: bool,
+    /// 關閉狀態下單按了 Shift：OnKeyUp 要把輸入法打開回到中文
+    reopen: bool,
 
     has_focus: bool,
     notification: Option<ComObject<Notification>>,
@@ -285,7 +358,7 @@ impl CangjieTextService {
             GUID_MODE_BUTTON,
             TF_LBI_STYLE_BTN_BUTTON,
             IDS_SWITCH_LANG,
-            IDI_CHI,
+            IDI_CJ,
             HMENU::default(),
             ID_SWITCH_LANG,
         )?;
@@ -315,6 +388,9 @@ impl CangjieTextService {
             keyboard_open: true,
             pending_down: None,
             last_test_down: None,
+            shape_changed: false,
+            closed_shift: false,
+            reopen: false,
             has_focus: true,
             notification: Default::default(),
             candidate_list: Default::default(),
@@ -361,6 +437,7 @@ impl CangjieTextService {
 
     pub(super) fn on_kill_focus(&mut self, context: Option<ITfContext>) {
         debug!("on_kill_focus");
+        keylog(format_args!("kill_focus"));
         self.has_focus = false;
         // 焦點改變：丟掉組字並斷開上文（PIME 版 onCompositionTerminated(forced) 同）
         if let Some(c) = self.composer.as_mut() {
@@ -381,6 +458,7 @@ impl CangjieTextService {
 
     pub(super) fn on_focus(&mut self) {
         debug!("on_focus");
+        keylog(format_args!("focus chinese={}", self.chinese() as u8));
         self.has_focus = true;
         if let Some(c) = self.composer.as_mut() {
             c.reset();
@@ -388,6 +466,7 @@ impl CangjieTextService {
     }
 
     pub(super) fn on_thread_focus(&mut self) -> Result<()> {
+        keylog(format_args!("thread_focus composer={}", self.composer.is_some() as u8));
         // 別的行程可能改了選項或同步了新資料
         reload_settings();
         self.ensure_composer();
@@ -435,8 +514,40 @@ impl CangjieTextService {
 
     /// 把一個按鍵事件餵給核心。回傳 None＝不處理（交給應用程式）。
     fn process(&mut self, ev: &SystemKeyboardEvent, release: bool) -> Option<KeyResult> {
-        // 鍵盤 OpenClose 關閉時不處理
+        let before = self.chinese();
+        let r = self.process_inner(ev, release);
+        if KEYLOG.is_some() {
+            keylog(format_args!(
+                "{} vk={} shift={} ctrl={} alt={} win={} open={} chinese={}->{} code={} r={:?}",
+                if release { "up  " } else { "down" },
+                vk_label(ev.vk),
+                ev.shift() as u8,
+                ev.ctrl() as u8,
+                ev.alt() as u8,
+                ev.win_down() as u8,
+                self.keyboard_open as u8,
+                before as u8,
+                self.chinese() as u8,
+                self.composer.as_ref().map_or(0, |c| c.code.len()),
+                r.as_ref().map(|r| (r.handled, r.commit.chars().count())),
+            ));
+        }
+        r
+    }
+
+    fn process_inner(&mut self, ev: &SystemKeyboardEvent, release: bool) -> Option<KeyResult> {
+        // 鍵盤 OpenClose 關閉時不處理，只看是不是單按 Shift（要用它重新打開）。
+        // 有些程式換欄位時會自己把輸入法關掉；不這樣做的話 Shift 就沒反應、卡在英文。
         if !self.keyboard_open {
+            if Self::is_shift(ev) && !ev.ctrl() && !ev.alt() && !ev.win_down() {
+                if !release {
+                    self.closed_shift = true;
+                } else if mem::take(&mut self.closed_shift) {
+                    self.reopen = true;
+                }
+            } else if !release {
+                self.closed_shift = false;
+            }
             return None;
         }
         let comp = self.composer.as_mut()?;
@@ -458,7 +569,15 @@ impl CangjieTextService {
         let s = current_settings();
         comp.clear_on_error = s.clear_on_error;
         comp.full_punct = s.full_punct;
-        Some(comp.process(name, ctrl, shift, alt, release))
+        comp.full_shape = s.full_shape;
+        let r = comp.process(name, ctrl, shift, alt, release);
+        let shape = comp.full_shape;
+        if shape != s.full_shape {
+            // 全形／半形是全域選項（存 settings.json），其他程式切回焦點時會讀到
+            toggle_setting(move |x| x.full_shape = shape);
+            self.shape_changed = true;
+        }
+        Some(r)
     }
 
     /// 決定吃不吃這個鍵。核心的 process 會改狀態，所以在這裡就處理、暫存結果，OnKeyDown 只負責輸出。
@@ -473,6 +592,7 @@ impl CangjieTextService {
                 .last_test_down
                 .is_some_and(|(vk, t)| vk == ev.vk && now.duration_since(t) < DUP_FILTER)
         {
+            keylog(format_args!("test_down dup vk={}", vk_label(ev.vk)));
             return Ok(true);
         }
         self.last_test_down = Some((ev.vk, now));
@@ -511,6 +631,13 @@ impl CangjieTextService {
         };
         debug!(commit = r.commit; "on_keydown");
         self.render(context, r.commit)?;
+        if mem::take(&mut self.shape_changed) {
+            let full = current_settings().full_shape;
+            let msg = HSTRING::from(if full { "全形" } else { "半形" });
+            if let Err(error) = self.show_message(context, &msg, Duration::from_secs(1)) {
+                error!("{}", error.report());
+            }
+        }
         Ok(true)
     }
 
@@ -531,6 +658,9 @@ impl CangjieTextService {
     ) -> Result<bool> {
         let was_chinese = self.chinese();
         let Some(r) = self.process(&ev, true) else {
+            if mem::take(&mut self.reopen) {
+                self.reopen_keyboard(context)?;
+            }
             return Ok(false);
         };
         let chinese = self.chinese();
@@ -603,9 +733,13 @@ impl CangjieTextService {
     /// 鍵盤 OpenClose 隔間改變（Ctrl+Space 等）：照隔間的值開關，關閉時丟掉組字。
     pub(super) fn on_compartment_change(&mut self, guid: &GUID) -> Result<()> {
         debug!(has_focus=self.has_focus; "on_compartment_change");
+        keylog(format_args!("compartment_change {guid:?} open={}", self.keyboard_open as u8));
         if guid == &GUID_COMPARTMENT_KEYBOARD_OPENCLOSE && self.has_focus {
             let was_open = self.keyboard_open;
             self.sync_keyboard_openclose()?;
+            self.closed_shift = false;
+            keylog(format_args!("openclose -> {}", self.keyboard_open as u8));
+            self.update_lang_buttons()?;
             if was_open && !self.keyboard_open {
                 if let Some(c) = self.composer.as_mut() {
                     c.reset();
@@ -615,6 +749,27 @@ impl CangjieTextService {
                     self.render(&context, String::new())?;
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// 程式把鍵盤關掉後使用者單按 Shift：打開並切回中文。
+    fn reopen_keyboard(&mut self, context: &ITfContext) -> Result<()> {
+        keylog(format_args!("reopen by shift"));
+        let compartment_mgr: ITfCompartmentMgr = self.thread_mgr.cast()?;
+        unsafe {
+            let compartment =
+                compartment_mgr.GetCompartment(&GUID_COMPARTMENT_KEYBOARD_OPENCLOSE)?;
+            compartment.SetValue(self.tid, &1i32.into())?;
+        }
+        self.keyboard_open = true;
+        if let Some(c) = self.composer.as_mut() {
+            c.reset();
+            c.chinese = true;
+        }
+        self.update_lang_buttons()?;
+        if let Err(error) = self.show_message(context, &HSTRING::from("中"), Duration::from_secs(1)) {
+            error!("{}", error.report());
         }
         Ok(())
     }
@@ -695,6 +850,10 @@ impl CangjieTextService {
                     toggle_setting(|s| s.full_punct = !s.full_punct);
                     self.refresh_menu();
                 }
+                ID_FULL_SHAPE => {
+                    toggle_setting(|s| s.full_shape = !s.full_shape);
+                    self.refresh_menu();
+                }
                 _ => {}
             }
         }
@@ -706,6 +865,7 @@ impl CangjieTextService {
             return Ok(());
         };
         c.chinese = !c.chinese;
+        keylog(format_args!("icon_toggle chinese={}", c.chinese as u8));
         c.reset();
         self.pending_down = None;
         self.update_lang_buttons()?;
@@ -722,6 +882,7 @@ impl CangjieTextService {
         unsafe {
             CheckMenuItem(self.popup_menu, ID_CLEAR_ON_ERROR, check(s.clear_on_error));
             CheckMenuItem(self.popup_menu, ID_FULL_PUNCT, check(s.full_punct));
+            CheckMenuItem(self.popup_menu, ID_FULL_SHAPE, check(s.full_shape));
             let _ = DeleteMenu(self.popup_menu, ID_SYNC_STATUS, MF_BYCOMMAND);
             let status = sync::status_text(data_dir(), None);
             if !status.is_empty() {
@@ -966,14 +1127,16 @@ impl CangjieTextService {
 
     fn update_lang_buttons(&self) -> Result<()> {
         let icon = self.get_lang_icon();
-        self.switch_lang_button.set_icon(icon)?;
+        // 自己的按鈕固定顯示「倉」，中／英看系統的輸入模式圖示
+        self.switch_lang_button.set_icon(self.lang_icons.cj)?;
         self.ime_mode_button.set_icon(icon)?;
         let _ = self.ime_mode_button.set_enabled(self.keyboard_open);
         Ok(())
     }
 
     fn get_lang_icon(&self) -> HICON {
-        if self.chinese() {
+        // 被程式關掉時打的是英文，圖示也要顯示「英」（按 Shift 可切回中文）
+        if self.keyboard_open && self.chinese() {
             self.lang_icons.chi
         } else {
             self.lang_icons.eng

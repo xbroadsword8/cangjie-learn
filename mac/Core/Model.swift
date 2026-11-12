@@ -11,6 +11,7 @@ let W_USER_UNI = 2.0                                 // 使用者選過此字的
 let CORRECTION_BOOST = 3                             // 不是第一候選卻被選中：算 3 次
 let W_CONTAINED = 0.3                                // （Python 版保留常數，build_data 用）
 let MAX_COMPLETIONS = 60
+let DECIDE_RATIO = 10                                // 上文 bigram 比同碼其他字大這麼多倍 → 選字由上文決定
 
 private let SQLITE_TRANSIENT_ = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
@@ -43,6 +44,8 @@ final class Model {
     private var peerUni: [[UInt8]: Int] = [:]   // 其他電腦學到的次數（sync.py），選字時與自己的相加
     private var peerBi: [[UInt8]: Int] = [:]
     private var ngramCache: [[UInt8]: Int] = [:]
+    private var decidesCache: [[UInt8]: Bool] = [:]
+    private var explained: [[UInt8]: Int] = [:]  // 每個字有幾次學習是上文決定的；單字偏好扣掉這部分
 
     init(modelDB: String, userDB: String) throws {
         if sqlite3_open_v2(modelDB, &db, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
@@ -62,6 +65,7 @@ final class Model {
             "create table if not exists bi (s text primary key, n int) without rowid;", nil, nil, nil)
         for (c, n) in Model.pairs(user, "select ch, n from uni") { userUni[bkey(c)] = n }
         for (c, n) in Model.pairs(user, "select s, n from bi") { userBi[bkey(c)] = n }
+        explained = countExplained()
     }
 
     deinit {
@@ -96,6 +100,58 @@ final class Model {
         return v
     }
 
+    private func column(_ sql: String, _ arg: String) -> [String] {
+        var st: OpaquePointer?
+        var out: [String] = []
+        if sqlite3_prepare_v2(db, sql, -1, &st, nil) == SQLITE_OK {
+            sqlite3_bind_text(st, 1, arg, -1, SQLITE_TRANSIENT_)
+            while sqlite3_step(st) == SQLITE_ROW { out.append(String(cString: sqlite3_column_text(st, 0))) }
+        }
+        sqlite3_finalize(st)
+        return out
+    }
+
+    /// bigram s（前一字＋此字）在詞庫裡遠多於同碼其他字的同位置 bigram：選這個字是上文決定的，
+    /// 不代表使用者偏好這個字（例：「自己」的己、「而已」的已）。
+    private func decides(_ s: String) -> Bool {
+        let key = bkey(s)
+        if let v = decidesCache[key] { return v }
+        let u = Array(s.unicodeScalars)
+        guard !u.isEmpty else { return false }
+        var pv = String.UnicodeScalarView(); pv.append(contentsOf: u[..<(u.count - 1)])
+        var cv = String.UnicodeScalarView(); cv.append(u[u.count - 1])
+        let p = String(pv), ch = String(cv)
+        let f = ngram(s)
+        var v = f > 0
+        if v {
+            outer: for code in column("select code from code where ch=?", ch) {
+                for r in column("select ch from code where code=?", code) {
+                    if bkey(r) != bkey(ch) && ngram(p + r) * DECIDE_RATIO > f {
+                        v = false
+                        break outer
+                    }
+                }
+            }
+        }
+        decidesCache[key] = v
+        return v
+    }
+
+    private func lastScalarKey(_ k: [UInt8]) -> [UInt8] {
+        let s = String(decoding: k, as: UTF8.self)
+        return bkey(tailScalars(s, 1))
+    }
+
+    private func countExplained() -> [[UInt8]: Int] {
+        var e: [[UInt8]: Int] = [:]
+        for d in [userBi, peerBi] {
+            for (k, n) in d where decides(String(decoding: k, as: UTF8.self)) {
+                e[lastScalarKey(k), default: 0] += n
+            }
+        }
+        return e
+    }
+
     func score(_ ch: String, _ ctx: String) -> Double {
         var s = log1p(Double(uni[bkey(ch)] ?? 0))
         let cs = Array(ctx.unicodeScalars)
@@ -114,7 +170,8 @@ final class Model {
             s += W_USER_BI * log1p(Double((userBi[k] ?? 0) + (peerBi[k] ?? 0)))
         }
         let k = bkey(ch)
-        s += W_USER_UNI * log1p(Double((userUni[k] ?? 0) + (peerUni[k] ?? 0)))
+        let un = (userUni[k] ?? 0) + (peerUni[k] ?? 0) - (explained[k] ?? 0)
+        s += W_USER_UNI * log1p(Double(max(0, un)))
         return s
     }
 
@@ -181,6 +238,7 @@ final class Model {
         peerBi = [:]
         for (c, n) in uni { peerUni[bkey(c), default: 0] += n }
         for (c, n) in bi { peerBi[bkey(c), default: 0] += n }
+        explained = countExplained()
     }
 
     func learn(_ ch: String, prev: String = "", corrected: Bool = false) {
@@ -190,6 +248,7 @@ final class Model {
         if !prev.isEmpty {
             let s = tailScalars(prev, 1) + ch
             userBi[bkey(s), default: 0] += n
+            if decides(s) { explained[bkey(ch), default: 0] += n }
             upsert("insert into bi values (?,?) on conflict(s) do update set n=n+?", s, n)
         }
     }

@@ -7,8 +7,10 @@
 #define ID_MODE_ICON 103
 #define IDS_SWITCH_LANG 104
 #define IDI_ENG 105
+#define IDI_CJ 106
 #define IDR_MENU 109
 #define ID_CLEAR_ON_ERROR 40101
 #define ID_FULL_PUNCT 40102
 #define ID_SYNC_STATUS 40103
+#define ID_FULL_SHAPE 40104
 #define IDC_STATIC -1
